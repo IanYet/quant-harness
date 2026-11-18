@@ -1,0 +1,12 @@
+{
+  "bots": {
+    "desk": { "url": "http://127.0.0.1:9899/hook" }
+  },
+  "notifications": {
+    "fill": { "bot": "desk", "target": "trader", "template": "{{symbol}} 成交 {{quantity}}" }
+  },
+  "agents": {
+    "research": { "url": "http://127.0.0.1:9899/research" },
+    "review": { "url": "http://127.0.0.1:9899/review" }
+  }
+}
