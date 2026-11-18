@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="940" viewBox="0 0 1440 940" role="img" aria-labelledby="title description">
+<title id="title">量化交易 Harness 架构图</title>
+<desc id="description">单机 Bun 和 TypeScript 架构。人和 Agent 编写普通脚本，临时直接运行，或交给常驻 harnessd 管理。每个独立脚本通过进程内的 SDK 调用本机 HTTP 工具，主 ticker 通过 NDJSON 实时流触发脚本。常驻服务连接交易所公共行情、历史数据、交易与私有成交回报，跟踪订单仓位，也提供 SQLite 持久化、通知、健康检查以及 Agent connector。采集脚本可以直接访问外部数据源。</desc>
+<defs>
+<marker id="control" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="8.6" refY="5" orient="auto"><path d="M0,1 L9,5 L0,9 Z" fill="#33597b"/></marker>
+<marker id="control-start" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="0.4" refY="5" orient="auto"><path d="M9,1 L0,5 L9,9 Z" fill="#33597b"/></marker>
+<marker id="flow" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="8.6" refY="5" orient="auto"><path d="M0,1 L9,5 L0,9 Z" fill="#086e66"/></marker>
+<marker id="flow-start" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="0.4" refY="5" orient="auto"><path d="M9,1 L0,5 L9,9 Z" fill="#086e66"/></marker>
+<marker id="link" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="8.6" refY="5" orient="auto"><path d="M0,1 L9,5 L0,9 Z" fill="#506878"/></marker>
+<marker id="link-start" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="0.4" refY="5" orient="auto"><path d="M9,1 L0,5 L9,9 Z" fill="#506878"/></marker>
+<marker id="store" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="8.6" refY="5" orient="auto"><path d="M0,1 L9,5 L0,9 Z" fill="#738693"/></marker>
+<marker id="store-start" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="0.4" refY="5" orient="auto"><path d="M9,1 L0,5 L9,9 Z" fill="#738693"/></marker>
+</defs>
+<g font-family="Noto Sans SC, PingFang SC, Microsoft YaHei, sans-serif">
+<rect x="0" y="0" width="1440" height="940" rx="0" fill="#fcfcfa" stroke="none" stroke-width="1.4"/>
+<text x="42" y="53" text-anchor="start" font-size="36" font-weight="700" fill="#183348">量化交易 Harness 架构图</text>
+<text x="475" y="52" text-anchor="start" font-size="21" font-weight="400" fill="#506878">Bun + TypeScript · 单机部署</text>
+<path d="M992 43 H1033" stroke="#33597b" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 5" marker-end="url(#control)"/>
+<text x="1046" y="50" text-anchor="start" font-size="17" font-weight="400" fill="#334f61">进程控制</text>
+<path d="M1170 43 H1211" stroke="#086e66" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#flow)"/>
+<text x="1224" y="50" text-anchor="start" font-size="17" font-weight="400" fill="#334f61">接口与数据</text>
+<path d="M40 73 H1400" stroke="#d5dfe0" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="390" y="97" width="688" height="191" rx="14" fill="#f2f6fb" stroke="#8da8c0" stroke-width="1.8"/>
+<rect x="28" y="387" width="1384" height="373" rx="15" fill="#eef6f3" stroke="#76a397" stroke-width="2"/>
+<rect x="42" y="128" width="244" height="118" rx="10" fill="#fff8e9" stroke="#c5a56f" stroke-width="1.4"/>
+<text x="164.0" y="165" text-anchor="middle" font-size="23" font-weight="700" fill="#805322">交易员与 Agent</text>
+<text x="164.0" y="197" text-anchor="middle" font-size="18" font-weight="400" fill="#334f61">共创、修改 .ts 文件</text>
+<text x="164.0" y="224" text-anchor="middle" font-size="18" font-weight="400" fill="#334f61">查看数据和日志后迭代</text>
+<rect x="1180" y="128" width="218" height="118" rx="10" fill="#faf9f5" stroke="#b9b7aa" stroke-width="1.4"/>
+<text x="1289.0" y="165" text-anchor="middle" font-size="23" font-weight="700" fill="#183348">外部市场数据</text>
+<text x="1289.0" y="197" text-anchor="middle" font-size="18" font-weight="400" fill="#334f61">公开 API 或自有数据源</text>
+<text x="1289.0" y="224" text-anchor="middle" font-size="18" font-weight="400" fill="#334f61">脚本直接访问</text>
+<text x="412" y="130" text-anchor="start" font-size="25" font-weight="700" fill="#33597b">独立 Bun 脚本进程</text>
+<text x="1053" y="128" text-anchor="end" font-size="17" font-weight="400" fill="#506878">按需启动，可并行运行</text>
+<rect x="411" y="149" width="178" height="51" rx="7" fill="#fff" stroke="#b2c2d0" stroke-width="1.4"/>
+<text x="500.0" y="182" text-anchor="middle" font-size="21" font-weight="700" fill="#183348">实盘策略</text>
+<rect x="602" y="149" width="194" height="51" rx="7" fill="#fff" stroke="#b2c2d0" stroke-width="1.4"/>
+<text x="699.0" y="182" text-anchor="middle" font-size="21" font-weight="700" fill="#183348">新版策略观察</text>
+<rect x="809" y="149" width="247" height="51" rx="7" fill="#fff" stroke="#b2c2d0" stroke-width="1.4"/>
+<text x="932.5" y="182" text-anchor="middle" font-size="21" font-weight="700" fill="#183348">采集 / 临时研究脚本</text>
+<rect x="411" y="216" width="645" height="51" rx="7" fill="#e0ebf5" stroke="#a1b7ca" stroke-width="1.4"/>
+<text x="733.5" y="248" text-anchor="middle" font-size="20" font-weight="700" fill="#33597b">各脚本在自己的进程内 import @quant/tools</text>
+<text x="1382" y="426" text-anchor="end" font-size="26" font-weight="700" fill="#086e66">harnessd  ·  单个常驻 Bun 服务</text>
+<rect x="54" y="449" width="358" height="98" rx="9" fill="#fff" stroke="#9ab5ab" stroke-width="1.4"/>
+<text x="72" y="479" text-anchor="start" font-size="23" font-weight="700" fill="#183348">脚本管理与健康检测</text>
+<text x="72" y="507" text-anchor="start" font-size="17" font-weight="400" fill="#334f61">同名策略交接下单权，保存源码和日志</text>
+<text x="72" y="532" text-anchor="start" font-size="17" font-weight="400" fill="#334f61">定时检查进程、WS 心跳和行情延迟</text>
+<rect x="453" y="449" width="930" height="98" rx="9" fill="#fff" stroke="#8cb5ac" stroke-width="1.4"/>
+<text x="478" y="481" text-anchor="start" font-size="24" font-weight="700" fill="#086e66">本机 HTTP 工具接口</text>
+<text x="478" y="519" text-anchor="start" font-size="20" font-weight="400" fill="#334f61">market.watchBars()  ·  trade.place()  ·  data.append()  ·  notify.send()  ·  agents.startTask()</text>
+<path d="M918 547 V578 M179 578 H1257" stroke="#97ada5" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M179 578 V609" stroke="#97ada5" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M448 578 V609" stroke="#97ada5" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M717 578 V609" stroke="#97ada5" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M986 578 V609" stroke="#97ada5" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M1257 578 V609" stroke="#97ada5" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="918" cy="578" r="3.1" fill="#819c90"/>
+<text x="645" y="570" text-anchor="start" font-size="15" font-weight="400" fill="#506878">进程内调用</text>
+<rect x="55" y="609" width="248" height="117" rx="10" fill="#ffffff" stroke="#a3b9ae" stroke-width="1.4"/>
+<text x="179.0" y="646" text-anchor="middle" font-size="23" font-weight="700" fill="#086e66">主 ticker 与行情</text>
+<text x="179.0" y="678" text-anchor="middle" font-size="18" font-weight="400" fill="#334f61">合并订阅、触发行情流</text>
+<text x="179.0" y="705" text-anchor="middle" font-size="18" font-weight="400" fill="#334f61">历史 K 线查询与回补</text>
+<rect x="324" y="609" width="248" height="117" rx="10" fill="#ffffff" stroke="#a3b9ae" stroke-width="1.4"/>
+<text x="448.0" y="646" text-anchor="middle" font-size="23" font-weight="700" fill="#086e66">交易与账户</text>
+<text x="448.0" y="678" text-anchor="middle" font-size="18" font-weight="400" fill="#334f61">挂撤单、杠杆、平仓</text>
+<text x="448.0" y="705" text-anchor="middle" font-size="18" font-weight="400" fill="#334f61">持续跟踪挂单、成交与仓位</text>
+<rect x="593" y="609" width="248" height="117" rx="10" fill="#ffffff" stroke="#a3b9ae" stroke-width="1.4"/>
+<text x="717.0" y="646" text-anchor="middle" font-size="23" font-weight="700" fill="#086e66">数据与持久化</text>
+<text x="717.0" y="678" text-anchor="middle" font-size="18" font-weight="400" fill="#334f61">按名称追加、读取数据集</text>
+<text x="717.0" y="705" text-anchor="middle" font-size="18" font-weight="400" fill="#334f61">新样本可被其他脚本订阅</text>
+<rect x="862" y="609" width="248" height="117" rx="10" fill="#ffffff" stroke="#a3b9ae" stroke-width="1.4"/>
+<text x="986.0" y="646" text-anchor="middle" font-size="23" font-weight="700" fill="#086e66">通知</text>
+<text x="986.0" y="678" text-anchor="middle" font-size="18" font-weight="400" fill="#334f61">机器人、接收人、模板</text>
+<text x="986.0" y="705" text-anchor="middle" font-size="18" font-weight="400" fill="#334f61">交易、健康及自定义通知</text>
+<rect x="1131" y="609" width="252" height="117" rx="10" fill="#ffffff" stroke="#a3b9ae" stroke-width="1.4"/>
+<text x="1257.0" y="646" text-anchor="middle" font-size="23" font-weight="700" fill="#086e66">Agent connector</text>
+<text x="1257.0" y="678" text-anchor="middle" font-size="18" font-weight="400" fill="#334f61">启动任务、发送消息</text>
+<text x="1257.0" y="705" text-anchor="middle" font-size="18" font-weight="400" fill="#334f61">查询任务状态与结果</text>
+<path d="M574 667 H590" stroke="#738693" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#store)"/>
+<rect x="55" y="816" width="517" height="100" rx="10" fill="#fff" stroke="#b7c5c9" stroke-width="1.4"/>
+<text x="313.5" y="850" text-anchor="middle" font-size="23" font-weight="700" fill="#183348">交易所</text>
+<path d="M313 862 V899" stroke="#d9e1e3" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="184" y="883" text-anchor="middle" font-size="17" font-weight="400" fill="#334f61">公共行情 WS / 历史 REST</text>
+<text x="442" y="883" text-anchor="middle" font-size="17" font-weight="400" fill="#334f61">交易 REST / 私有回报 WS</text>
+<rect x="593" y="816" width="248" height="100" rx="10" fill="#fff" stroke="#b7c5c9" stroke-width="1.4"/>
+<text x="717.0" y="850" text-anchor="middle" font-size="23" font-weight="700" fill="#183348">本机 SQLite 文件</text>
+<text x="717.0" y="883" text-anchor="middle" font-size="17" font-weight="400" fill="#334f61">K 线、订单成交、脚本数据</text>
+<rect x="862" y="816" width="248" height="100" rx="10" fill="#fff" stroke="#b7c5c9" stroke-width="1.4"/>
+<text x="986.0" y="850" text-anchor="middle" font-size="23" font-weight="700" fill="#183348">通知机器人</text>
+<text x="986.0" y="883" text-anchor="middle" font-size="17" font-weight="400" fill="#334f61">将消息送达交易员</text>
+<rect x="1131" y="816" width="252" height="100" rx="10" fill="#fff" stroke="#b7c5c9" stroke-width="1.4"/>
+<text x="1257.0" y="850" text-anchor="middle" font-size="23" font-weight="700" fill="#183348">Agent 后端</text>
+<text x="1257.0" y="883" text-anchor="middle" font-size="17" font-weight="400" fill="#334f61">唤起协作 Agent 或其他 Agent</text>
+<path d="M288 181 H387" stroke="#33597b" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 5" marker-end="url(#control)"/>
+<text x="338" y="165" text-anchor="middle" font-size="17" font-weight="700" fill="#33597b">bun run</text>
+<path d="M1081 187 H1177" stroke="#086e66" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#flow)" marker-start="url(#flow-start)"/>
+<text x="1129" y="172" text-anchor="middle" font-size="16" font-weight="700" fill="#086e66">fetch / WS</text>
+<path d="M150 249 V446" stroke="#33597b" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 5" marker-end="url(#control)" marker-start="url(#control-start)"/>
+<text x="164" y="315" text-anchor="start" font-size="18" font-weight="700" fill="#33597b">提交 / 查日志</text>
+<text x="164" y="338" text-anchor="start" font-size="15" font-weight="400" fill="#506878">run · logs · stop · replace</text>
+<path d="M355 446 V364 H453 V291" stroke="#33597b" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 5" marker-end="url(#control)"/>
+<text x="408" y="356" text-anchor="middle" font-size="16" font-weight="700" fill="#33597b">Bun.spawn</text>
+<path d="M661 270 V446" stroke="#086e66" stroke-width="2.3" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#flow)" marker-start="url(#flow-start)"/>
+<text x="678" y="323" text-anchor="start" font-size="19" font-weight="700" fill="#086e66">HTTP 调用 / JSON 返回</text>
+<text x="678" y="350" text-anchor="start" font-size="16" font-weight="400" fill="#506878">查行情、下单、写入数据</text>
+<path d="M949 446 V270" stroke="#086e66" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#flow)"/>
+<text x="971" y="323" text-anchor="start" font-size="19" font-weight="700" fill="#086e66">持续 HTTP 响应</text>
+<text x="971" y="350" text-anchor="start" font-size="16" font-weight="400" fill="#506878">NDJSON 行情流 / 数据流</text>
+<path d="M179 729 V813" stroke="#086e66" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#flow)" marker-start="url(#flow-start)"/>
+<text x="191" y="790" text-anchor="start" font-size="15" font-weight="400" fill="#334f61">实时行情 / 历史数据</text>
+<path d="M448 729 V813" stroke="#086e66" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#flow)" marker-start="url(#flow-start)"/>
+<text x="460" y="790" text-anchor="start" font-size="15" font-weight="400" fill="#334f61">下单 / 账户回报</text>
+<path d="M717 729 V813" stroke="#086e66" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#flow)" marker-start="url(#flow-start)"/>
+<text x="729" y="790" text-anchor="start" font-size="15" font-weight="400" fill="#334f61">持久读写</text>
+<path d="M986 728 V813" stroke="#086e66" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#flow)"/>
+<text x="998" y="790" text-anchor="start" font-size="15" font-weight="400" fill="#334f61">发送通知</text>
+<path d="M1257 729 V813" stroke="#086e66" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#flow)" marker-start="url(#flow-start)"/>
+<text x="1269" y="790" text-anchor="start" font-size="15" font-weight="400" fill="#334f61">任务 / 消息</text>
+</g></svg>
