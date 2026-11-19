@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1168" viewBox="0 0 1600 1168" role="img" aria-labelledby="title description">
   <title id="title">量化交易 Harness 架构图 (v2)</title>
-  <desc id="description">单机 Bun + TypeScript 架构，采用稳核与外围模块解耦设计。常驻主进程 quant-core 仅承载交易所网关与基础行情、硬风控与 Live/Paper 双路由执行引擎、轻量脚本调度及内存有序事件总线，零同步重查询与外部慢调用，可长期持续运行不重启。Agent 编写策略与外部数据采集脚本并通过控制面启停脚本，独立脚本按能力令牌隔离为 live、paper、readonly、collector 四类角色。持久化存储 quant-storage、通知与 Agent 护栏网关 quant-notifier、独立看门狗 quant-watchdog 作为外围独立常驻进程，通过按 seq 订阅事件流与外部探活解耦协作，外围故障或重启不影响主进程交易。</desc>
+  <desc id="description">单机 Bun + TypeScript 架构，采用稳核、1子账户1实盘策略与外围模块解耦设计。常驻主进程 quant-core 仅承载共享公共行情与多子账户池网关、账户级独占 Epoch 锁、极简防呆风控、托管 Checkpoint、Shadow 与 Live 路由、轻量脚本调度及内存有序事件总线，砍掉虚拟子账本与内置模拟撮合引擎，持续运行不重启。开发联调与并行观察使用依赖交易所测试 API 或 Testnet 的 shadow 模式，灰度验证采用小资金 Canary 子账户，最终平滑交接至正式子账户。持久化存储 quant-storage、通知与 Agent 护栏网关 quant-notifier、独立看门狗 quant-watchdog 作为外围独立常驻进程。</desc>
   <defs>
     <marker id="control" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="8.6" refY="5" orient="auto">
       <path d="M0,1 L9,5 L0,9 Z" fill="#33597b"/>
@@ -34,7 +34,7 @@
 
     <!-- Header & Legend -->
     <text x="44" y="51" text-anchor="start" font-size="33" font-weight="700" fill="#183348">量化交易 Harness 架构图 (v2)</text>
-    <text x="518" y="50" text-anchor="start" font-size="18.5" font-weight="400" fill="#506878">Bun + TypeScript · 单机稳核 + 外围模块解耦</text>
+    <text x="514" y="50" text-anchor="start" font-size="16.5" font-weight="400" fill="#506878">Bun + TypeScript · 稳核 · 1账户1策略 · 外围解耦</text>
 
     <path d="M954 43 H994" stroke="#33597b" stroke-width="2" fill="none" stroke-linecap="round" stroke-dasharray="6 5" marker-end="url(#control)"/>
     <text x="1006" y="49" text-anchor="start" font-size="15.5" font-weight="400" fill="#334f61">进程控制 / 审批</text>
@@ -54,7 +54,7 @@
     <text x="176" y="140" text-anchor="middle" font-size="22" font-weight="700" fill="#805322">交易员与 Agent</text>
     <text x="176" y="172" text-anchor="middle" font-size="15.5" font-weight="400" fill="#334f61">编写策略与外部采集 .ts 脚本</text>
     <text x="176" y="198" text-anchor="middle" font-size="15.5" font-weight="400" fill="#334f61">控制启停 · 审批实盘切换</text>
-    <text x="176" y="224" text-anchor="middle" font-size="15.5" font-weight="400" fill="#334f61">查历史数据、模拟绩效与日志</text>
+    <text x="176" y="224" text-anchor="middle" font-size="15.5" font-weight="400" fill="#334f61">查历史数据、测试结果与日志</text>
     <rect x="74" y="240" width="204" height="26" rx="6" fill="#f5e7cb" stroke="#d8be8f" stroke-width="1"/>
     <text x="176" y="258" text-anchor="middle" font-size="13" font-weight="700" fill="#7a4e1d">CLI / MCP 控制与只读查询</text>
 
@@ -63,37 +63,37 @@
     <text x="402" y="124" text-anchor="start" font-size="22.5" font-weight="700" fill="#33597b">独立 Bun 脚本进程</text>
     <text x="1222" y="122" text-anchor="end" font-size="15.5" font-weight="400" fill="#506878">进程隔离 · 按能力令牌（Capability Token）分级</text>
 
-    <!-- Script Card 1: Live -->
+    <!-- Script Card 1: Live (including Canary sub-account) -->
     <rect x="400" y="139" width="197" height="82" rx="8" fill="#ffffff" stroke="#a6c4bd" stroke-width="1.4"/>
-    <text x="498.5" y="165" text-anchor="middle" font-size="18.5" font-weight="700" fill="#183348">实盘策略</text>
-    <rect x="427" y="174" width="143" height="21" rx="10" fill="#dff2ec"/>
-    <text x="498.5" y="189" text-anchor="middle" font-size="12.5" font-weight="700" fill="#086e66">live · Epoch 租约</text>
-    <text x="498.5" y="211" text-anchor="middle" font-size="12.5" font-weight="400" fill="#506878">受硬风控约束 · 支持热更</text>
+    <text x="498.5" y="165" text-anchor="middle" font-size="18" font-weight="700" fill="#183348">实盘策略（含灰度）</text>
+    <rect x="421" y="174" width="155" height="21" rx="10" fill="#dff2ec"/>
+    <text x="498.5" y="189" text-anchor="middle" font-size="12.2" font-weight="700" fill="#086e66">live · 1账户1策略</text>
+    <text x="498.5" y="211" text-anchor="middle" font-size="12.2" font-weight="400" fill="#506878">Canary 灰度 / 正式子账户</text>
 
-    <!-- Script Card 2: Paper -->
+    <!-- Script Card 2: Shadow (Dev Testing & Parallel Observation) -->
     <rect x="609" y="139" width="197" height="82" rx="8" fill="#ffffff" stroke="#b2c2d0" stroke-width="1.4"/>
-    <text x="707.5" y="165" text-anchor="middle" font-size="18.5" font-weight="700" fill="#183348">新版观察策略</text>
-    <rect x="636" y="174" width="143" height="21" rx="10" fill="#e3edf8"/>
-    <text x="707.5" y="189" text-anchor="middle" font-size="12.5" font-weight="700" fill="#2d5a84">paper · 模拟撮合</text>
-    <text x="707.5" y="211" text-anchor="middle" font-size="12.5" font-weight="400" fill="#506878">实时流验证 · 零实盘风险</text>
+    <text x="707.5" y="165" text-anchor="middle" font-size="18" font-weight="700" fill="#183348">影子测试 / 观察</text>
+    <rect x="627" y="174" width="161" height="21" rx="10" fill="#e3edf8"/>
+    <text x="707.5" y="189" text-anchor="middle" font-size="12" font-weight="700" fill="#2d5a84">shadow · 交易所测试API</text>
+    <text x="707.5" y="211" text-anchor="middle" font-size="12.2" font-weight="400" fill="#506878">开发联调 &amp; 并行观察无风险</text>
 
     <!-- Script Card 3: Research / Backtest -->
     <rect x="818" y="139" width="197" height="82" rx="8" fill="#ffffff" stroke="#c0cbd3" stroke-width="1.4"/>
-    <text x="916.5" y="165" text-anchor="middle" font-size="18.5" font-weight="700" fill="#183348">研究 / 回测脚本</text>
+    <text x="916.5" y="165" text-anchor="middle" font-size="18" font-weight="700" fill="#183348">研究 / 回测脚本</text>
     <rect x="843" y="174" width="147" height="21" rx="10" fill="#edf1f4"/>
-    <text x="916.5" y="189" text-anchor="middle" font-size="12.5" font-weight="700" fill="#4b6170">readonly · 无交易权</text>
-    <text x="916.5" y="211" text-anchor="middle" font-size="12.5" font-weight="400" fill="#506878">离线历史回放与因子分析</text>
+    <text x="916.5" y="189" text-anchor="middle" font-size="12.2" font-weight="700" fill="#4b6170">readonly · 无交易权</text>
+    <text x="916.5" y="211" text-anchor="middle" font-size="12.2" font-weight="400" fill="#506878">离线历史回放与因子分析</text>
 
     <!-- Script Card 4: Collector -->
     <rect x="1027" y="139" width="197" height="82" rx="8" fill="#ffffff" stroke="#d5be96" stroke-width="1.4"/>
-    <text x="1125.5" y="165" text-anchor="middle" font-size="18.5" font-weight="700" fill="#183348">外部数据采集</text>
+    <text x="1125.5" y="165" text-anchor="middle" font-size="18" font-weight="700" fill="#183348">外部数据采集</text>
     <rect x="1048" y="174" width="155" height="21" rx="10" fill="#faeed8"/>
-    <text x="1125.5" y="189" text-anchor="middle" font-size="12.5" font-weight="700" fill="#85521d">collector · 仅发数据</text>
-    <text x="1125.5" y="211" text-anchor="middle" font-size="12.5" font-weight="400" fill="#506878">费率 / 链上 / 情绪另类数据</text>
+    <text x="1125.5" y="189" text-anchor="middle" font-size="12.2" font-weight="700" fill="#85521d">collector · 仅发数据</text>
+    <text x="1125.5" y="211" text-anchor="middle" font-size="12.2" font-weight="400" fill="#506878">费率 / 链上 / 情绪另类数据</text>
 
     <!-- Shared SDK Bar -->
     <rect x="400" y="233" width="824" height="45" rx="8" fill="#e0ebf5" stroke="#a1b7ca" stroke-width="1.4"/>
-    <text x="812" y="261" text-anchor="middle" font-size="16.5" font-weight="700" fill="#33597b">各脚本统一 import @quant/tools（回测 / 观察 / 实盘同码同接口 · 凭 Token 隔离权限）</text>
+    <text x="812" y="261" text-anchor="middle" font-size="16" font-weight="700" fill="#33597b">各脚本统一 import @quant/tools（回测 / Shadow / Canary / 正式实盘同码同接口 · Token 隔离）</text>
 
     <!-- External Market & Alt Data -->
     <rect x="1316" y="102" width="240" height="178" rx="12" fill="#faf9f5" stroke="#b9b7aa" stroke-width="1.5"/>
@@ -114,8 +114,8 @@
     <text x="84" y="464" text-anchor="start" font-size="19.5" font-weight="700" fill="#183348">控制面与进程调度</text>
     <rect x="322" y="446" width="96" height="22" rx="6" fill="#eaf2f0" stroke="#bdd3cb" stroke-width="1"/>
     <text x="370" y="461" text-anchor="middle" font-size="12.5" font-weight="700" fill="#2c5d54">admin.sock</text>
-    <text x="84" y="490" text-anchor="start" font-size="14.5" font-weight="400" fill="#334f61">start / stop / replace · 实盘切换审批门</text>
-    <text x="84" y="512" text-anchor="start" font-size="14" font-weight="400" fill="#506878">Bun.spawn 注入 Token · 托管 Checkpoint / 日志</text>
+    <text x="84" y="490" text-anchor="start" font-size="14.2" font-weight="400" fill="#334f61">start / stop / replace · 实盘切换审批门</text>
+    <text x="84" y="512" text-anchor="start" font-size="13.8" font-weight="400" fill="#506878">Bun.spawn 注入 Token · 优雅冻结交接状态</text>
 
     <!-- Upper Right: Runtime API -->
     <rect x="462" y="436" width="770" height="88" rx="9" fill="#ffffff" stroke="#8cb5ac" stroke-width="1.4"/>
@@ -123,46 +123,46 @@
     <rect x="598" y="446" width="276" height="22" rx="6" fill="#e3f3ef" stroke="#b3d7ce" stroke-width="1"/>
     <text x="736" y="461" text-anchor="middle" font-size="12.5" font-weight="700" fill="#086e66">runtime.sock · UDS + Token 能力鉴权</text>
     <text x="482" y="490" text-anchor="start" font-size="15" font-weight="400" fill="#334f61">market.watch()  ·  data.publish / watch()  ·  trade.place / cancel()  ·  state.save / load()</text>
-    <text x="482" y="512" text-anchor="start" font-size="13.8" font-weight="400" fill="#506878">按 Token 模式隔离权限（只读 / 采集 / 模拟盘 / 实盘），直接拒绝越权调用与过期 Epoch 请求</text>
+    <text x="482" y="512" text-anchor="start" font-size="13.6" font-weight="400" fill="#506878">按 Token 隔离权限（live / shadow / collector / readonly），强校验账户 Epoch 防止越权与旧写覆写</text>
 
-    <!-- Lower Left: Exchange Gateway & Base Ticker -->
+    <!-- Lower Left: Exchange Gateway & Sub-Account Pool -->
     <rect x="66" y="566" width="366" height="110" rx="9" fill="#ffffff" stroke="#a3b9ae" stroke-width="1.4"/>
-    <text x="249" y="596" text-anchor="middle" font-size="19" font-weight="700" fill="#086e66">交易所网关与基础行情</text>
-    <text x="249" y="623" text-anchor="middle" font-size="14.5" font-weight="400" fill="#334f61">公共 WS 合并订阅基础 Ticker / K 线</text>
-    <text x="249" y="645" text-anchor="middle" font-size="14.5" font-weight="400" fill="#334f61">交易 REST / 私有回报 WS · 限频重连</text>
-    <text x="249" y="666" text-anchor="middle" font-size="13.5" font-weight="400" fill="#506878">启动与断线后自动状态对账 (Reconcile)</text>
+    <text x="249" y="596" text-anchor="middle" font-size="19" font-weight="700" fill="#086e66">交易所网关与多账户池</text>
+    <text x="249" y="623" text-anchor="middle" font-size="14" font-weight="400" fill="#334f61">公共 WS 合并订阅基础 Ticker / K 线（共享）</text>
+    <text x="249" y="645" text-anchor="middle" font-size="14" font-weight="400" fill="#334f61">多子账户池（Canary / 正式）独立私有 WS / REST</text>
+    <text x="249" y="666" text-anchor="middle" font-size="13.2" font-weight="400" fill="#506878">Testnet / 校验 API 通道 · 按账户直连对账</text>
 
-    <!-- Lower Center: Risk Gate & Execution Engine -->
+    <!-- Lower Center: Guardrail Risk, State & Routing -->
     <rect x="462" y="566" width="376" height="110" rx="9" fill="#ffffff" stroke="#a3b9ae" stroke-width="1.4"/>
-    <text x="650" y="596" text-anchor="middle" font-size="19" font-weight="700" fill="#086e66">风控闸门与执行引擎</text>
-    <text x="650" y="623" text-anchor="middle" font-size="14.5" font-weight="400" fill="#334f61">单笔 / 敞口 / 杠杆 / 频控 + Kill Switch</text>
-    <text x="650" y="645" text-anchor="middle" font-size="14.5" font-weight="400" fill="#334f61">Epoch 租约校验 + clientOrderId 幂等</text>
-    <text x="650" y="666" text-anchor="middle" font-size="13.5" font-weight="400" fill="#506878">策略子账本 · Live / Paper 双后端路由</text>
+    <text x="650" y="596" text-anchor="middle" font-size="19" font-weight="700" fill="#086e66">防呆风控、状态与路由</text>
+    <text x="650" y="623" text-anchor="middle" font-size="14" font-weight="400" fill="#334f61">1 账户 1 实盘独占锁（account_id → Epoch）</text>
+    <text x="650" y="645" text-anchor="middle" font-size="14" font-weight="400" fill="#334f61">极简防呆（频控 / 限额 / 杠杆 / Kill Switch）+ 幂等</text>
+    <text x="650" y="666" text-anchor="middle" font-size="13.2" font-weight="400" fill="#506878">托管 Checkpoint（防覆写）· Shadow / Live 路由</text>
 
     <!-- Lower Right: In-Memory Event Bus -->
     <rect x="868" y="566" width="364" height="110" rx="9" fill="#ffffff" stroke="#a3b9ae" stroke-width="1.4"/>
     <text x="1050" y="596" text-anchor="middle" font-size="19" font-weight="700" fill="#086e66">内存事件总线 (Event Bus)</text>
-    <text x="1050" y="623" text-anchor="middle" font-size="14.5" font-weight="400" fill="#334f61">全局单调 seq + 环形缓冲断点续传</text>
-    <text x="1050" y="645" text-anchor="middle" font-size="14.5" font-weight="400" fill="#334f61">market.* / trade.* / data.* / sys.*</text>
-    <text x="1050" y="666" text-anchor="middle" font-size="13.5" font-weight="400" fill="#506878">分层背压（行情可丢旧，成交不丢弃）</text>
+    <text x="1050" y="623" text-anchor="middle" font-size="14.2" font-weight="400" fill="#334f61">全局单调 seq + 环形缓冲断点续传</text>
+    <text x="1050" y="645" text-anchor="middle" font-size="13.8" font-weight="400" fill="#334f61">market.* / trade.* / shadow.* / data.* / state.*</text>
+    <text x="1050" y="666" text-anchor="middle" font-size="13.2" font-weight="400" fill="#506878">分层背压（行情可丢旧，成交与状态不丢弃）</text>
 
     <!-- Internal Arrows inside quant-core -->
-    <!-- Control -> RiskExec (Epoch / Hot Reload) -->
+    <!-- Control -> Risk/State (Epoch / Hot Reload / Handover) -->
     <path d="M392 524 V546 H522 V564" stroke="#5e7c74" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#inner)"/>
-    <text x="457" y="540" text-anchor="middle" font-size="12" font-weight="400" fill="#4a6961">Epoch / 风控热更</text>
+    <text x="457" y="540" text-anchor="middle" font-size="12" font-weight="400" fill="#4a6961">账户锁 / 热更交接</text>
 
-    <!-- Runtime <-> RiskExec -->
+    <!-- Runtime <-> Risk/State -->
     <path d="M650 526 V564" stroke="#5e7c74" stroke-width="1.6" fill="none" stroke-linecap="round" marker-start="url(#inner-start)" marker-end="url(#inner)"/>
-    <text x="660" y="550" text-anchor="start" font-size="12" font-weight="400" fill="#4a6961">trade.* / 鉴权</text>
+    <text x="660" y="550" text-anchor="start" font-size="12" font-weight="400" fill="#4a6961">trade.* / state.*</text>
 
     <!-- Runtime <-> Event Bus -->
     <path d="M1050 526 V564" stroke="#5e7c74" stroke-width="1.6" fill="none" stroke-linecap="round" marker-start="url(#inner-start)" marker-end="url(#inner)"/>
     <text x="1060" y="550" text-anchor="start" font-size="12" font-weight="400" fill="#4a6961">data.publish / 推流</text>
 
-    <!-- Gateway <-> RiskExec -->
+    <!-- Gateway <-> Risk/State -->
     <path d="M434 621 H460" stroke="#5e7c74" stroke-width="1.6" fill="none" stroke-linecap="round" marker-start="url(#inner-start)" marker-end="url(#inner)"/>
 
-    <!-- RiskExec -> Event Bus -->
+    <!-- Risk/State -> Event Bus -->
     <path d="M840 621 H866" stroke="#5e7c74" stroke-width="1.6" fill="none" stroke-linecap="round" marker-end="url(#inner)"/>
 
     <!-- Gateway -> Event Bus (bottom rail inside quant-core, zero crossings) -->
@@ -173,15 +173,16 @@
     <!-- ==================== TIER 3: EXCHANGE & PERIPHERAL SIDECARS ==================== -->
 
     <!-- Exchange (Left) -->
-    <rect x="44" y="802" width="352" height="148" rx="12" fill="#ffffff" stroke="#b7c5c9" stroke-width="1.5"/>
-    <text x="220" y="841" text-anchor="middle" font-size="22" font-weight="700" fill="#183348">交易所</text>
-    <path d="M74 859 H366" stroke="#e2eaec" stroke-width="1.2" fill="none"/>
-    <text x="220" y="889" text-anchor="middle" font-size="15.5" font-weight="400" fill="#334f61">公共行情 WS / 历史 K 线 REST</text>
-    <text x="220" y="918" text-anchor="middle" font-size="15.5" font-weight="400" fill="#334f61">交易 REST / 私有订单与仓位 WS</text>
+    <rect x="44" y="796" width="352" height="158" rx="12" fill="#ffffff" stroke="#b7c5c9" stroke-width="1.5"/>
+    <text x="220" y="831" text-anchor="middle" font-size="21.5" font-weight="700" fill="#183348">交易所</text>
+    <path d="M74 846 H366" stroke="#e2eaec" stroke-width="1.2" fill="none"/>
+    <text x="220" y="873" text-anchor="middle" font-size="14.5" font-weight="400" fill="#334f61">公共行情 WS / 历史 REST（共享）</text>
+    <text x="220" y="901" text-anchor="middle" font-size="14.5" font-weight="400" fill="#334f61">多子账户私有 WS &amp; REST（Canary / 正式）</text>
+    <text x="220" y="929" text-anchor="middle" font-size="13.8" font-weight="400" fill="#506878">Testnet / 订单校验 API（Shadow 开发测试）</text>
 
     <!-- Peripheral Modules Container (Right) -->
     <rect x="480" y="776" width="1076" height="182" rx="15" fill="#f5f4f9" stroke="#9d96b3" stroke-width="1.8"/>
-    <!-- Header & Subtitle placed in arrow-free zones: left of x=657 and between x=680..985! -->
+    <!-- Header & Subtitle placed in arrow-free zones: left of x=660 and between x=680..985! -->
     <text x="500" y="808" text-anchor="start" font-size="21.5" font-weight="700" fill="#4b436e">外围独立模块</text>
     <text x="836" y="806" text-anchor="middle" font-size="14.5" font-weight="400" fill="#615a7d">独立常驻进程 · 故障或重启不影响主进程</text>
 
@@ -203,7 +204,7 @@
     <rect x="1196" y="824" width="340" height="114" rx="10" fill="#ffffff" stroke="#b2abc7" stroke-width="1.5"/>
     <text x="1366" y="853" text-anchor="middle" font-size="18.5" font-weight="700" fill="#4b436e">quant-storage · 持久化存储</text>
     <text x="1366" y="879" text-anchor="middle" font-size="13.6" font-weight="400" fill="#334f61">按 seq 订阅全量事件流异步批量落盘</text>
-    <text x="1366" y="901" text-anchor="middle" font-size="13.6" font-weight="400" fill="#334f61">分库隔离（账本 / 时序采集 / 滚动日志）</text>
+    <text x="1366" y="901" text-anchor="middle" font-size="13.6" font-weight="400" fill="#334f61">分库隔离（账本+状态 / 时序采集 / 日志）</text>
     <text x="1366" y="922" text-anchor="middle" font-size="13" font-weight="400" fill="#506878">承接历史 K 线回补、预热与离线回测</text>
 
     <!-- ==================== TIER 4: STORAGE, CHANNELS, PRINCIPLES ==================== -->
@@ -211,9 +212,9 @@
     <!-- Operating Principles Card (Bottom Left) -->
     <rect x="44" y="1024" width="352" height="108" rx="10" fill="#f7f7f2" stroke="#c8c8be" stroke-width="1.3" stroke-dasharray="5 4"/>
     <text x="62" y="1051" text-anchor="start" font-size="15.5" font-weight="700" fill="#334f61">单机运行与安全底线</text>
-    <text x="62" y="1074" text-anchor="start" font-size="12.6" font-weight="400" fill="#506878">· systemd 同级托管 4 进程，零 Redis / MQ / Docker</text>
-    <text x="62" y="1095" text-anchor="start" font-size="12.6" font-weight="400" fill="#506878">· 回测 / 观察 / 实盘同码切换，实盘经 Epoch 原子交接</text>
-    <text x="62" y="1116" text-anchor="start" font-size="12.6" font-weight="400" fill="#506878">· 重查询、慢通知与探活出内核，主进程常驻不重启</text>
+    <text x="62" y="1074" text-anchor="start" font-size="12.5" font-weight="400" fill="#506878">· systemd 同级托管 4 进程，零 Redis / MQ / Docker</text>
+    <text x="62" y="1095" text-anchor="start" font-size="12.5" font-weight="400" fill="#506878">· 1 账户 1 实盘物理隔离，无虚拟子账本与假撮合</text>
+    <text x="62" y="1116" text-anchor="start" font-size="12.5" font-weight="400" fill="#506878">· 闭环：Shadow 测试 → Canary 灰度 → 正式子账户</text>
 
     <!-- Notification Channels -->
     <rect x="498" y="1024" width="416" height="108" rx="10" fill="#ffffff" stroke="#b7c5c9" stroke-width="1.4"/>
@@ -230,7 +231,7 @@
     <!-- Split SQLite & Rotating Logs -->
     <rect x="1196" y="1024" width="340" height="108" rx="10" fill="#ffffff" stroke="#b7c5c9" stroke-width="1.4"/>
     <text x="1366" y="1058" text-anchor="middle" font-size="20" font-weight="700" fill="#183348">分库 SQLite + 滚动日志</text>
-    <text x="1366" y="1087" text-anchor="middle" font-size="14" font-weight="400" fill="#334f61">ledger.db（账本 / 源码 / Checkpoint）</text>
+    <text x="1366" y="1087" text-anchor="middle" font-size="13.8" font-weight="400" fill="#334f61">ledger.db（成交 / Shadow / Checkpoint 版本）</text>
     <text x="1366" y="1110" text-anchor="middle" font-size="13.8" font-weight="400" fill="#506878">timeseries.db（K 线 / 采集）· logs/</text>
 
     <!-- ==================== INTER-TIER CONNECTIONS (ZERO CROSSINGS, ZERO TEXT OVERLAP) ==================== -->
@@ -272,8 +273,8 @@
     <text x="1424" y="571" text-anchor="middle" font-size="12.2" font-weight="400" fill="#506878">(CLI / 研究脚本 / 策略启动)</text>
 
     <!-- 8. Exchange Gateway <-> Exchange -->
-    <path d="M220 679 V799" stroke="#086e66" stroke-width="2.2" fill="none" stroke-linecap="round" marker-start="url(#flow-start)" marker-end="url(#flow)"/>
-    <text x="232" y="750" text-anchor="start" font-size="14.5" font-weight="400" fill="#334f61">实时行情 / 下单 / 私有回报</text>
+    <path d="M220 679 V793" stroke="#086e66" stroke-width="2.2" fill="none" stroke-linecap="round" marker-start="url(#flow-start)" marker-end="url(#flow)"/>
+    <text x="232" y="746" text-anchor="start" font-size="14" font-weight="400" fill="#334f61">共享行情 / 多账户实盘 / 测试 API</text>
 
     <!-- 9. Watchdog -> quant-core (External Probe) -->
     <path d="M660 821 V711" stroke="#b85432" stroke-width="2" fill="none" stroke-linecap="round" stroke-dasharray="6 5" marker-end="url(#watch)"/>
