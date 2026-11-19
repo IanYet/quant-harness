@@ -1,6 +1,0 @@
-{
-  "name": "@quant/tools",
-  "version": "0.1.0",
-  "type": "module",
-  "exports": { ".": "./index.ts", "./transport": "./transport.ts" }
-}

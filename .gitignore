@@ -1,7 +1,0 @@
-node_modules/
-.harness/
-.env
-.env.*
-!.env.example
-*.sqlite*
-*.log
