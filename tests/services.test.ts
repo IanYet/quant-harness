@@ -36,22 +36,30 @@ test("Telegram and encrypted Feishu callbacks enforce identity and persist dedup
     expect(await (await telegramCallback("local-secret", 21)).json()).toMatchObject({ text: "Received" });
     expect(await (await telegramCallback("local-secret", 21)).json()).toMatchObject({ text: "Already received" });
 
-    const feishuCallback = (appId: string, age = 0, corrupt = false) => {
+    const unixSeconds = (age = 0) => String(Math.floor(Date.now() / 1000) - age);
+    const formattedTime = (age = 0) => {
+      const clock = new Date(Date.now() + 8 * 3_600_000 - age * 1000).toISOString().slice(0, -1).replace("T", " ");
+      return clock + "123456 +0800 CST m=+1024.000000001";
+    };
+    const feishuCallback = (appId: string, ts = unixSeconds(), corrupt = false) => {
       const raw = JSON.stringify({ header: { event_type: "card.action.trigger", event_id: "event", token: "verified", app_id: appId },
         event: { operator: { open_id: "ou_fixture" }, context: { open_chat_id: "oc_fixture" },
           action: { value: { key: "f".repeat(20), decision: "reject" } } } });
       const iv = Buffer.alloc(16, 23);
       const cipher = createCipheriv("aes-256-cbc", createHash("sha256").update(feishu.encryptKey).digest(), iv);
       const body = JSON.stringify({ encrypt: Buffer.concat([iv, cipher.update(raw), cipher.final()]).toString("base64") });
-      const ts = String(Math.floor(Date.now() / 1000) - age), nonce = "unique";
+      const nonce = "unique";
       const signature = createHash("sha256").update(ts + nonce + feishu.encryptKey + body).digest("hex");
       return handler(new Request("http://localhost/webhooks/feishu", { method: "POST", body,
         headers: { "x-lark-request-timestamp": ts, "x-lark-request-nonce": nonce, "x-lark-signature": corrupt ? "wrong" : signature } }));
     };
-    expect((await feishuCallback("cli_fixture", 360)).status).toBe(401);
+    expect((await feishuCallback("cli_fixture", unixSeconds(360))).status).toBe(401);
+    expect((await feishuCallback("cli_fixture", formattedTime(360))).status).toBe(401);
+    expect((await feishuCallback("cli_fixture", formattedTime(-360))).status).toBe(401);
     expect((await feishuCallback("cli_other")).status).toBe(401);
-    expect((await feishuCallback("cli_fixture", 0, true)).status).toBe(401);
-    expect((await feishuCallback("cli_fixture")).status).toBe(200);
+    expect((await feishuCallback("cli_fixture", formattedTime(), true)).status).toBe(401);
+    expect((await feishuCallback("cli_fixture", formattedTime())).status).toBe(200);
+    expect((await feishuCallback("cli_fixture", String(Date.now()))).status).toBe(200);
     expect(await (await feishuCallback("cli_fixture")).json()).toMatchObject({ toast: { content: "已受理过" } });
     expect(queue.pending.callbacks).toBe(2);
   } finally { db.close(); }

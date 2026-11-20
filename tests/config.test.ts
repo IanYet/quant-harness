@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readSecret } from "../src/shared/config";
+import { imSettings } from "../src/notifier/settings";
 
 test("services and local SDK read runtime paths and credentials from the JSON config", async () => {
   const dir = await mkdtemp(join(tmpdir(), "quant-config-"));
@@ -45,6 +46,30 @@ test("services and local SDK read runtime paths and credentials from the JSON co
       override: join(dir, "deployed"), sdkOverride: join(dir, "deployed"),
     });
     expect(() => readSecret(secrets, "../harness.json")).toThrow("Invalid credential filename");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("Feishu reads approvers from its credential file and falls back to legacy config", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "quant-im-config-"));
+  try {
+    const feishu = { enabled: true, alertChatId: "oc_fixture" };
+    const settings = { secretsDir: dir, im: { feishu } };
+    const legacy = { ...feishu, allowedAdminOpenIds: ["ou_legacy"] };
+    const app = { appId: "cli_fixture", appSecret: "app-test", encryptKey: "encrypt-test", verificationToken: "verify-test" };
+    const shared = join(dir, "secrets.im.json");
+    const dedicated = "secrets.feishu.json";
+    await Promise.all([
+      writeFile(shared, JSON.stringify({ feishu: { ...app, allowedAdminOpenIds: ["ou_current"] } }), { mode: 0o600 }),
+      writeFile(join(dir, dedicated), JSON.stringify({ ...app, allowedAdminOpenIds: [] }), { mode: 0o600 }),
+    ]);
+    expect(imSettings(settings).feishu?.users).toEqual(["ou_current"]);
+    expect(imSettings({ ...settings, im: { feishu: legacy } }).feishu?.users).toEqual(["ou_current"]);
+    expect(imSettings({ ...settings, im: { feishu: { ...legacy, credentialFile: dedicated } } }).feishu?.users).toEqual([]);
+
+    await writeFile(shared, JSON.stringify({ feishu: app }), { mode: 0o600 });
+    expect(imSettings({ ...settings, im: { feishu: legacy } }).feishu?.users).toEqual(["ou_legacy"]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

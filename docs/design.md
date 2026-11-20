@@ -210,8 +210,7 @@ quant-harness/
     },
     "feishu": {
       "enabled": true,
-      "alertChatId": "oc_...",
-      "allowedAdminOpenIds": ["ou_..."]
+      "alertChatId": "oc_..."
     }
   },
   "agent": {
@@ -266,6 +265,7 @@ quant-harness/
 
 - **热重载（`reload`）范围**：支持热重载全局 `symbols`（动态增减基础常驻流订阅，并同步初始化新标的 K 线聚合器）、各子账户的 `allowedSymbols`（新增标的即刻触发该标的的保证金/杠杆校验）、`requireApproval`、`requireApprovalOnStop`、`requireApprovalOnManualTrade`、`risk`、`labels` 与 `shadow.risk`；`marginType` / `initialLeverage` 仅在账户/标的初始化时校验与设置；新增或移除交易所 API 凭证需重启对应连接。
 - **凭据文件**。`secrets.exchange.json` 结构为 `{ accounts: { [accountId]: { apiKey, apiSecret } }, shadow: { [shadowAccountId]: { apiKey, apiSecret } } }`。各账户也可通过 `credentialFile` 指定同目录的 JSON 文件名，直接包含 `{ apiKey, apiSecret }`。通知凭据放在 `secrets.im.json`，飞书和 Telegram 可各自通过 `credentialFile` 指定同目录的独立 JSON。文件权限设为 `0600`。`quant-core` 与启用应急撤单的 `quant-watchdog` 按需读取交易凭据。托管脚本通过当次 `QUANT_TOKEN` 调用服务。交易凭据变更需要重启服务。
+- **飞书审批人**。在 `secrets.im.json` 的 `feishu.allowedAdminOpenIds` 配置允许审批的 Open ID。独立凭据文件使用根对象的 `allowedAdminOpenIds`。凭据文件缺少该字段时兼容读取主配置的 `im.feishu.allowedAdminOpenIds`。凭据中的空数组表示审批名单为空。
 - **Webhook 路由映射（Nginx/Caddy HTTPS 反代示例，仅通知与审批）**：
   - `https://<domain>/webhooks/telegram/notifier` → `http://127.0.0.1:18101/webhooks/telegram`
   - `https://<domain>/webhooks/feishu/notifier` → `http://127.0.0.1:18101/webhooks/feishu`

@@ -4,11 +4,22 @@ import { equal, imJson, parseObject, unauthorized } from "./protocol";
 import type { Notice, VerifiedUpdate } from "./protocol";
 import type { FeishuSettings } from "./settings";
 
+function requestTimeMs(value: string): number {
+  if (/^\d{10}$/.test(value)) return Number(value) * 1000;
+  if (/^\d{13}$/.test(value)) return Number(value);
+  // Feishu card callbacks can send Go's time.Time.String format.
+  const formatted = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))? ([+-]\d{2})(\d{2}) \S+(?: m=[+-]\d+(?:\.\d+)?)?$/.exec(value);
+  if (!formatted) return NaN;
+  const [, date, clock, fraction = "", offsetHours, offsetMinutes] = formatted;
+  const millis = fraction.slice(0, 3).padEnd(3, "0");
+  return Date.parse(`${date}T${clock}.${millis}${offsetHours}:${offsetMinutes}`);
+}
+
 export function parseFeishu(settings: FeishuSettings, headers: Headers, body: string, now = Date.now()): VerifiedUpdate | { challenge: string } | null {
   const ts = headers.get("x-lark-request-timestamp") ?? "";
   const nonce = headers.get("x-lark-request-nonce") ?? "";
   const signed = headers.get("x-lark-signature") ?? "";
-  const validTime = /^\d{10,13}$/.test(ts) && Math.abs(now - Number(ts) * (ts.length === 13 ? 1 : 1000)) <= 5 * 60_000;
+  const validTime = Math.abs(now - requestTimeMs(ts)) <= 5 * 60_000;
   const expected = createHash("sha256").update(ts + nonce + settings.encryptKey + body).digest("hex");
   if (signed && (!validTime || !nonce || !equal(signed, expected))) unauthorized();
   let value = parseObject(body);

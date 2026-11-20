@@ -5,7 +5,7 @@ export type Channel = "telegram" | "feishu";
 export type TelegramSettings = { botToken: string; webhookSecret: string; chat: string; users: string[] };
 export type FeishuSettings = { appId: string; appSecret: string; encryptKey: string; verificationToken: string; chat: string; users: string[] };
 
-export function imSettings(config: HarnessConfig) {
+export function imSettings(config: Pick<HarnessConfig, "im" | "secretsDir">) {
   const im = config.im;
   const listen = record(im.notifierListen ?? {});
   const t = record(im.telegram ?? {});
@@ -28,7 +28,8 @@ export function imSettings(config: HarnessConfig) {
   };
   const feishu: FeishuSettings | undefined = !feishuEnabled ? undefined : {
     chat: str(f.alertChatId, "feishu.alertChatId", /^oc_[A-Za-z0-9_-]+$/),
-    users: stringList(f.allowedAdminOpenIds ?? [], "feishu.allowedAdminOpenIds", /^ou_[A-Za-z0-9_-]+$/),
+    users: stringList(Object.hasOwn(fs, "allowedAdminOpenIds") ? fs.allowedAdminOpenIds : f.allowedAdminOpenIds ?? [],
+      "feishu.allowedAdminOpenIds", /^ou_[A-Za-z0-9_-]+$/),
     appId: str(fs.appId, "feishu.appId"), appSecret: str(fs.appSecret, "feishu.appSecret"),
     encryptKey: str(fs.encryptKey, "feishu.encryptKey"), verificationToken: str(fs.verificationToken, "feishu.verificationToken"),
   };

@@ -17,7 +17,7 @@
   "im": {
     "notifierListen": { "host": "127.0.0.1", "port": 18101 },
     "telegram": { "enabled": false, "alertChatId": "", "allowedAdminUserIds": [] },
-    "feishu": { "enabled": false, "alertChatId": "", "allowedAdminOpenIds": [] }
+    "feishu": { "enabled": false, "alertChatId": "" }
   },
   "agent": {
     "defaultBackend": "codex",
