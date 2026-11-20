@@ -64,3 +64,31 @@
 | [docs/architecture.md](./docs/architecture.md) | 架构设计（系统边界、进程拓扑、全量行情分层、工作区与策略资产、CLI/MCP 工具集与故障恢复） |
 | [docs/architecture.svg](./docs/architecture.svg) | 架构图（矢量源文件） |
 | [docs/design.md](./docs/design.md) | 详细工程设计（目录结构、配置、UDS/事件契约、Binance 全量行情与 Algo 条件单网关、SQLite DDL、Agent 适配、CLI/MCP 与分阶段验收） |
+
+## 初始化与运行
+
+安装仓库依赖并为运行目录创建配置。模板中的实盘、Demo 账户和 IM 通道均为空或关闭。
+
+```bash
+bun install --frozen-lockfile
+export QUANT_CONFIG_PATH="$PWD/config/harness.json"
+cp config/harness.example.json "$QUANT_CONFIG_PATH"
+export QUANT_DATA_DIR="$PWD/.quant"
+mkdir -m 700 -p "$QUANT_DATA_DIR/secrets"
+```
+
+各服务的入口为 `bun run quant-core`、`bun run quant-storage`、`bun run quant-notifier`、`bun run quant-agent` 和 `bun run quant-watchdog`。服务可独立启动。部署到常驻服务器时，使用 [systemd unit](./deploy/systemd/) 和 [HTTPS 反代模板](./deploy/nginx/quant-webhooks.conf.example)。unit 模板使用 `ubuntu`、`/home/ubuntu/projects/quant-harness`、`/etc/quant-harness/harness.json` 和 `/var/lib/quant-harness`。
+
+按 [配置规格](./docs/design.md#23-配置结构与热重载边界) 设置每账户的标的和风控。交易凭据和 IM 凭据分别放在 `$QUANT_DATA_DIR/secrets/exchange.json` 与 `im.json`，文件权限为 `0600`。飞书使用新版 `card.action.trigger`、Encrypt Key 和 Verification Token。Telegram Webhook 使用 `secret_token`。Antigravity 的可见会话默认使用 App 数据目录。共享 App 目录由 ACP 打开，使用 CLI 会话目录时可通过 `project` 指定 CLI 项目。Codex 和 Antigravity 需要预先登录。同一系统用户下的 Agent 及脚本遵循仓库的可信运行约定。
+
+```bash
+bun run quant health --json
+bun run quant market funding --symbol BTCUSDT --start 2026-11-19T00:00:00+08:00 --backfill
+bun run scripts/research/funding-summary.ts BTCUSDT 7
+cp scripts/workers/account-watch.ts "$QUANT_DATA_DIR/scripts/workers/"
+bun run quant run start worker account-watch.ts --persistent --state-name account-watch --account-read '*'
+```
+
+回测直接接受自有策略草稿或已封存的 `strategyId`。通过 `quant backtest run <target> --start ... --end ... --symbols BTCUSDT,ETHUSDT` 启动，时间使用 Unix 毫秒或带时区的 ISO 8601。仅以闭合主网 K 线、标记价历史和已归档因子推进虚拟时钟。分钟 K 线无法确定触发后的分时路径，条件限价单从触发后的下一根 K 线开始撮合。`priceProtect` 使用回测参数 `triggerProtect` 提供对应时期的阈值。
+
+`bun run typecheck` 和 `bun test` 用于检查基础设施。Agent 的日任务数按 UTC 统计，费用门槛使用后端提供的费用或配置的 `inputUsdPerMillion` / `outputUsdPerMillion` 估算。缺少计价数据的任务在健康端点中计入 `unmetered`。

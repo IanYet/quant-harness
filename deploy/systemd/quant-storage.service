@@ -1,0 +1,23 @@
+[Unit]
+Description=Quant Harness storage
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/projects/quant-harness
+Environment=PATH=/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=QUANT_CONFIG_PATH=/etc/quant-harness/harness.json
+Environment=QUANT_DATA_DIR=/var/lib/quant-harness
+StateDirectory=quant-harness
+StateDirectoryMode=0750
+UMask=0027
+ExecStart=/home/ubuntu/.local/bin/bun /home/ubuntu/projects/quant-harness/src/storage/main.ts
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

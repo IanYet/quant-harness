@@ -1,0 +1,40 @@
+{
+  "dataDir": "/var/lib/quant-harness",
+  "defaultSymbol": "BTCUSDT",
+  "symbols": ["BTCUSDT", "ETHUSDT"],
+  "binance": {
+    "mainnetRest": "https://fapi.binance.com",
+    "mainnetWs": "wss://fstream.binance.com",
+    "testnetRest": "https://demo-fapi.binance.com",
+    "testnetWs": "wss://demo-fstream.binance.com",
+    "ipWeightLimitPerMin": 1800
+  },
+  "accounts": {},
+  "shadow": {
+    "accounts": {},
+    "risk": { "maxOrderNotionalUsd": 1000, "maxLeverage": 10, "maxOrdersPerMin": 30 }
+  },
+  "im": {
+    "notifierListen": { "host": "127.0.0.1", "port": 18101 },
+    "telegram": { "enabled": false, "alertChatId": "", "allowedAdminUserIds": [] },
+    "feishu": { "enabled": false, "alertChatId": "", "allowedAdminOpenIds": [] }
+  },
+  "agent": {
+    "defaultBackend": "codex",
+    "backends": {
+      "codex": { "type": "codex", "command": "codex" },
+      "antigravity": { "type": "antigravity", "command": "agy" }
+    },
+    "guardrails": { "dedupCooldownSec": 300, "maxConcurrentTasks": 4, "dailyMaxTasks": 200, "dailyMaxBudgetUsd": 50, "maxDepth": 3 },
+    "cron": []
+  },
+  "watchdog": {
+    "intervalSec": 10,
+    "coreTimeoutMs": 2000,
+    "maxEventLoopLagMs": 250,
+    "maxPublicWsStaleSec": 30,
+    "maxStorageSeqLag": 5000,
+    "minDiskFreeGb": 5,
+    "emergencyCancel": { "enabled": false, "consecutiveFailures": 6, "includeConditional": false }
+  }
+}

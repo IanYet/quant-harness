@@ -1,0 +1,23 @@
+{
+  "name": "quant-harness",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/tools"],
+  "bin": { "quant": "src/cli/main.ts", "quant-mcp": "src/mcp/server.ts" },
+  "scripts": {
+    "quant": "bun src/cli/main.ts",
+    "typecheck": "tsc --noEmit",
+    "quant-core": "bun src/core/main.ts",
+    "quant-storage": "bun src/storage/main.ts",
+    "quant-notifier": "bun src/notifier/main.ts",
+    "quant-agent": "bun src/agent/main.ts",
+    "quant-watchdog": "bun src/watchdog/main.ts",
+    "quant-mcp": "bun src/mcp/server.ts"
+  },
+  "dependencies": {
+    "@quant/tools": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "typescript": "5.9.3"
+  },
+  "devDependencies": { "@types/bun": "1.4.5" }
+}
