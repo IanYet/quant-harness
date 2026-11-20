@@ -13,7 +13,7 @@
   - 所有实盘子账户在代码层完全同构，仅通过每账户独立配置（`requireApproval`、风控阈值、`labels`）区分小资金灰度账户与主力账户。
   - 所有子账户统一启用 **Hedge Mode（双向持仓）**。
 - **策略资产模型**：策略以不可变 `.ts` 脚本文件持久化存储；基于旧策略修改采用 Copy-on-Write 复制衍生新版本并记录谱系，配合五维正交标签支持按市场状态检索与唤醒。
-- **人机分工**：交易员通过手机 IM 或自然语言与 AI Agent 对话，并通过 IM 完成高风险审批；AI Agent 由 `quant-agent` 托管，负责策略衍生/封存、采集脚本编写、回测与复盘，**所有脚本启停与策略管理的唯一入口为 Agent Tool Call**。AI Agent 仅工作在离线/异步闭环中，**不参与盘中实时下单决策**；所有盘中交易执行由确定性 Bun 脚本完成。
+- **人机分工**：交易员通过 Codex / Antigravity App（SSH Connect）或 CLI 与 AI Agent 对话，并通过飞书 / Telegram 接收通知与完成高风险审批（IM 仅做通知与审批，不提供聊天对话功能）；AI Agent 由 `quant-agent` 托管，负责策略衍生/封存、采集脚本编写、回测与复盘，**所有脚本启停与策略管理的唯一入口为 Agent Tool Call**。AI Agent 仅工作在离线/异步闭环中，**不参与盘中实时下单决策**；所有盘中交易执行由确定性 Bun 脚本完成。
 - **上线路径**：`离线回测 (readonly)` → `Shadow（交易所 Demo / Testnet API）` → `小资金子账户灰度 (live)` → `主力子账户 (live)`。
 
 ---
@@ -24,8 +24,8 @@
 | :--- | :--- | :--- | :--- |
 | **`quant-core`** | 常驻主进程 | 交易所网关与多子账户池、账户独占锁与防呆风控、托管 Checkpoint、脚本调度、内存有序事件总线 | 核心交易链路；持续运行不重启，无同步重查询、无慢速外呼、无用户脚本代码，支持配置热重载 |
 | **`quant-storage`** | 外围常驻进程 | 订阅事件流异步批量落盘、分库存储与日志滚动、不可变策略库索引、承接历史查询 / 回补 / 预热 / 回测读取 | 重启或故障不影响 `quant-core`；恢复后按 `seq` 断点补写 |
-| **`quant-notifier`** | 外围常驻进程 | 交易/审批/异常通知投递、降噪冷却重试、承接 IM 实盘审批交互并回调 `admin.sock` | 重启或外网超时不影响 `quant-core` |
-| **`quant-agent`** | 外围常驻进程 | 复用 Codex 等现有 Agent Harness、对外暴露 `agent.sock` 任务接口、手机 IM 对话、定时全局复盘、承接脚本发起的受限任务 | 重启或 LLM 慢响应不影响 `quant-core` 与告警通道 |
+| **`quant-notifier`** | 外围常驻进程 | 飞书 / Telegram 通知投递、降噪冷却重试、实盘审批交互并回调 `admin.sock` | 重启或外网超时不影响 `quant-core` |
+| **`quant-agent`** | 外围常驻进程 | 复用 Codex / Antigravity 等 Agent Harness、暴露 `agent.sock` 任务接口、远端侧边栏可见性控制、定时全局复盘、承接脚本发起的异步任务 | 重启或 LLM 慢响应不影响 `quant-core` 与告警通道 |
 | **`quant-watchdog`** | 外围常驻进程 | 外部探活 `quant-core` 与外围进程、独立直连兜底告警、可选极端失联应急撤单 | 独立于 `quant-core` 之外，持独立告警通道 |
 | **独立 Bun 脚本进程** | 隔离工作进程 | 运行实盘策略、Shadow 测试/观察、外部数据采集、研究/回测脚本 | 进程级隔离，单脚本崩溃或阻塞不影响主进程及其他脚本 |
 
@@ -139,14 +139,14 @@ agents.getTask(taskId)
   4. `logs/<role>/<name>/<run_id>.log`：按大小/日期滚动压缩的文本日志。
 - 统一承接历史 K 线回补、策略预热、策略库检索、Agent Tool 查询与离线回测读取。
 
-### 4.2 `quant-notifier`（通知与实盘审批网关）
+### 4.2 `quant-notifier`（飞书 / Telegram 通知与审批网关）
 
-- 订阅 `trade.*`、`sys.*` 及审批事件，渲染推送至独立配置的 **告警与审批 IM 频道（独立 Bot）**，内置同类告警聚合降噪、冷却防刷屏与重试队列。
-- 承接交易员在 IM 中的实盘审批确认交互，校验交易员身份与提案哈希后回调 `admin.sock`。
+- 订阅 `trade.*`、`sys.*` 及审批事件，并经 `notifier.sock` 接收 Agent 复盘与诊断摘要，推送至 **飞书 / Telegram 告警审批 Bot**，内置同类告警聚合降噪、冷却防刷屏与重试队列。
+- 仅提供通知、实盘审批交互与白名单管理员指令（回调 `admin.sock`），不承载 Agent 对话功能。
 
 ### 4.3 `quant-agent`（Agent 会话与任务网关）
 
-统一承接底层 Agent Harness 复用、手机 IM 对话、定时全局复盘与脚本主动发起任务：
+统一承接底层 Agent Harness 复用、定时全局复盘与脚本主动发起任务：
 
 - **统一对外接口（`agent.sock`）**：
   ```text
@@ -155,16 +155,12 @@ agents.getTask(taskId)
   GET  /v1/tasks/:id              // 查询任务状态、耗时与输出摘要
   POST /v1/tasks/:id/cancel       // 取消运行中的任务
   ```
-- **底层 Agent Harness 适配与侧边栏可见性**：通过薄 Adapter 复用现有 Agent Harness（如 Codex App Server 与 Antigravity `agy` / `agy acp`），支持按任务控制会话在远端 App 侧边栏的可见性（`visible` / `hidden` / `ephemeral`；`im_user`、`cron_review` 与 `script_triggered` 均默认 `visible`，便于直接从侧边栏打开续聊）。
-- **手机 IM 双向对话（独立对话频道）**：
-  - 与 `quant-notifier` 的告警审批 Bot 隔离运行；
-  - 维护独立 `agent.db` 持久化 `im_thread_id ↔ session_id` 映射：新开话题发起新会话，原话题回复自动 `resume` 续聊；
-  - 定时复盘或脚本发起的任务完成后自动在 IM 建话题输出报告，交易员可从 App 远端项目侧边栏或直接回复 IM 话题无缝接管该 `session_id` 继续迭代。
-- **定时全局复盘（Cron Scheduler）**：内置定时调度（如每日 UTC 00:05、每周复盘），拉起 `cron_review` 任务汇总各子账户绩效、成交、Checkpoint 演进、采集健康与告警，结合当下 BTC 市场状态给在跑策略追加归因备注，并按 `regime` 标签从策略库检索可唤醒的 `shelved` 历史策略推送至 IM。
+- **底层 Agent Harness 适配与侧边栏可见性**：通过薄 Adapter 复用现有 Agent Harness（如 Codex App Server 与 Antigravity `agy` / `agy acp`），支持按任务控制会话在远端 App 侧边栏的可见性（`visible` / `hidden` / `ephemeral`；`user`、`cron_review` 与 `script_triggered` 均默认 `visible`）。任务完成后经 `quant-notifier` 推送摘要通知，交易员可直接从 Codex / Antigravity App 的远端项目侧边栏打开该会话继续聊。
+- **定时全局复盘（Cron Scheduler）**：内置定时调度（如每日 UTC 00:05、每周复盘），拉起 `cron_review` 任务汇总各子账户绩效、成交、Checkpoint 演进、采集健康与告警，结合当下 BTC 市场状态给在跑策略追加归因备注，并按 `regime` 标签从策略库检索可唤醒的 `shelved` 历史策略，将复盘摘要经 `quant-notifier` 推送至飞书 / Telegram。
 - **脚本触发任务与四道护栏**：订阅事件总线 `agent.request` 异步消费（零阻塞 `quant-core` 与脚本），施加：
   1. **指纹去重与冷却**：按 `(source_scope, dedupKey)` 在冷却窗口内合并重复请求（保留原 `taskId` 别名可查）；
   2. **并发、写锁与预算上限**：限制全局并发任务数、代码仓库写锁同时仅允许 1 个写会话、强制每日调用次数与费用上限；
-  3. **Profile 提示词与审计约定**：已接入的可信 Agent 共享完整运维工具集，通过 Profile 提示词约定职责及何时先询问交易员（`im_user`、`cron_review`、`script_triggered`），所有控制面变更在服务端记录真实执行来源与审计日志；
+  3. **Profile 提示词与审计约定**：已接入的可信 Agent 共享完整运维工具集，通过 Profile 提示词约定职责及何时先询问交易员（`user`、`cron_review`、`script_triggered`），所有控制面变更在服务端记录真实执行来源与审计日志；
   4. **反递归护栏（`maxDepth = 1`）**：脚本触发的 Agent 任务禁止递归触发新的脚本任务。
 
 ### 4.4 `quant-watchdog`（独立外部看门狗）
@@ -297,7 +293,7 @@ strategies/
 | **策略 / 采集脚本崩溃** | 不影响 `quant-core` 及其他进程；按策略退避重启或停止告警，重启后从 Checkpoint 与子账户真实状态恢复 |
 | **`quant-storage` 故障或重启** | `quant-core` 交易与推流零中断；恢复后按 `last_seq` 追平补写，超出环形缓冲则告警并触发历史 K 线回补 |
 | **`quant-notifier` 故障或外呼超时** | `quant-core` 交易零中断；`quant-watchdog` 检出后经直连兜底通道告警 |
-| **`quant-agent` 故障或 Harness 超时** | 不影响 `quant-core` 实盘交易与 `quant-notifier` 告警通道；恢复后从 `agent.db` 恢复会话映射与定时复盘调度 |
+| **`quant-agent` 故障或 Harness 超时** | 不影响 `quant-core` 实盘交易与 `quant-notifier` 告警通道；恢复后从 `agent.db` 恢复任务状态、去重窗口与定时复盘调度 |
 | **`quant-core` 假死 / Event Loop 阻塞** | `quant-watchdog` 探活超时直连告警；持续失联超阈值且开启开关时触发应急撤单 |
 | **`quant-core` 崩溃被 `systemd` 拉起** | 自动对已配置子账户执行 **Hedge Mode 校验 + 持仓/挂单对账**，从 `ledger.db`/热备恢复最新 Checkpoint 与 `epoch`，按不可变 `strategyId` 校验 `code_hash` 后恢复托管脚本 |
 

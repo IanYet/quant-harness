@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1680" height="1180" viewBox="0 0 1680 1180" role="img" aria-labelledby="title description">
   <title id="title">量化交易 Harness 架构图</title>
-  <desc id="description">面向 BTC/USDT U本位永续合约的单机 Bun + TypeScript 量化架构，采用 1 个常驻稳核 quant-core 加 4 个外围独立常驻进程（quant-watchdog、quant-notifier、quant-agent、quant-storage）的解耦设计。交易员通过手机 IM 或自然语言与 AI Agent 对话，AI Agent 经 quant-agent 托管并复用 Codex 等现有 Agent Harness，所有脚本启停与策略资产管理均通过唯一入口 Tool Call 执行，Agent 不参与盘中实时下单决策。策略采用不可变脚本文件加 Copy-on-Write 衍生与多维标签管理，shadow 与 live 均按不可变 strategyId 运行。所有实盘子账户代码路径完全同构，强制 1 子账户 1 实盘策略与统一 Hedge Mode 双向持仓。</desc>
+  <desc id="description">面向 BTC/USDT U本位永续合约的单机 Bun + TypeScript 量化架构，采用 1 个常驻稳核 quant-core 加 4 个外围独立常驻进程（quant-watchdog、quant-notifier、quant-agent、quant-storage）的解耦设计。交易员通过 Codex / Antigravity App（SSH Connect）或 CLI 与 AI Agent 对话，飞书与 Telegram 仅用于接收通知摘要与完成实盘审批；AI Agent 经 quant-agent 托管并支持远端侧边栏可见性控制，所有脚本启停与策略资产管理均通过唯一入口 Tool Call 执行，Agent 不参与盘中实时下单决策。策略采用不可变脚本文件加 Copy-on-Write 衍生与多维标签管理，shadow 与 live 均按不可变 strategyId 运行。所有实盘子账户代码路径完全同构，强制 1 子账户 1 实盘策略与统一 Hedge Mode 双向持仓。</desc>
   <defs>
     <marker id="control" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="8.6" refY="5" orient="auto">
       <path d="M0,1 L9,5 L0,9 Z" fill="#33597b"/>
@@ -58,7 +58,7 @@
     <!-- Trader <-> AI Agent -->
     <rect x="44" y="92" width="286" height="64" rx="11" fill="#fff8e9" stroke="#c5a56f" stroke-width="1.5"/>
     <text x="187" y="121" text-anchor="middle" font-size="19.5" font-weight="700" fill="#805322">交易员</text>
-    <text x="187" y="144" text-anchor="middle" font-size="13.8" font-weight="400" fill="#334f61">手机 IM 对话提需求 · 审批实盘切换</text>
+    <text x="187" y="144" text-anchor="middle" font-size="13.5" font-weight="400" fill="#334f61">App / CLI 对话 · 飞书/TG 审批</text>
 
     <path d="M187 159 V183" stroke="#9d7438" stroke-width="1.8" fill="none" stroke-linecap="round" marker-start="url(#dialogue-start)" marker-end="url(#dialogue)"/>
     <text x="199" y="176" text-anchor="start" font-size="12.5" font-weight="400" fill="#7a5422">自然语言对话</text>
@@ -208,9 +208,9 @@
     <!-- Peripheral 3: quant-agent -->
     <rect x="1056" y="824" width="274" height="118" rx="10" fill="#f9f5ff" stroke="#a794c9" stroke-width="1.6"/>
     <text x="1193" y="852" text-anchor="middle" font-size="16.5" font-weight="700" fill="#593b8a">quant-agent · Agent 网关</text>
-    <text x="1193" y="878" text-anchor="middle" font-size="13" font-weight="400" fill="#334f61">agent.sock · 适配 Codex 等 Harness</text>
-    <text x="1193" y="900" text-anchor="middle" font-size="13" font-weight="400" fill="#334f61">手机 IM 对话 · 定时全局复盘</text>
-    <text x="1193" y="922" text-anchor="middle" font-size="12.5" font-weight="400" fill="#5a4978">脚本触发护栏（去重/预算/Profile）</text>
+    <text x="1193" y="878" text-anchor="middle" font-size="13" font-weight="400" fill="#334f61">agent.sock · Codex / Antigravity</text>
+    <text x="1193" y="900" text-anchor="middle" font-size="13" font-weight="400" fill="#334f61">定时全局复盘 · 侧边栏可见性控制</text>
+    <text x="1193" y="922" text-anchor="middle" font-size="12.5" font-weight="400" fill="#5a4978">脚本触发护栏（去重/预算/反递归）</text>
 
     <!-- Peripheral 4: quant-storage -->
     <rect x="1344" y="824" width="274" height="118" rx="10" fill="#ffffff" stroke="#b2abc7" stroke-width="1.5"/>
@@ -228,21 +228,18 @@
     <text x="62" y="1103" text-anchor="start" font-size="12.2" font-weight="400" fill="#506878">· 1 账户 1 实盘 + 统一 Hedge，子账户配置同构</text>
     <text x="62" y="1124" text-anchor="start" font-size="12.2" font-weight="400" fill="#506878">· 不可变策略库 + 多维标签，Tool Call 唯一入口</text>
 
-    <!-- Mobile IM Channels (Receives straight vertical from watchdog, notifier, and agent!) -->
-    <rect x="480" y="1032" width="632" height="112" rx="10" fill="#ffffff" stroke="#b7c5c9" stroke-width="1.4"/>
-    <text x="796" y="1064" text-anchor="middle" font-size="19.5" font-weight="700" fill="#183348">手机 IM 渠道（Telegram / 飞书 / Slack）</text>
-    <path d="M512 1080 H1080" stroke="#e4ecef" stroke-width="1.1" fill="none"/>
-    <text x="696" y="1104" text-anchor="middle" font-size="13.8" font-weight="400" fill="#334f61">告警与审批频道（独立 Bot）</text>
-    <text x="696" y="1126" text-anchor="middle" font-size="12.6" font-weight="400" fill="#506878">交易通知 · 实盘审批 · Watchdog 兜底</text>
-    <path d="M904 1088 V1132" stroke="#dce5e8" stroke-width="1.1" fill="none"/>
-    <text x="1008" y="1104" text-anchor="middle" font-size="13.8" font-weight="400" fill="#593b8a">Agent 对话频道</text>
-    <text x="1008" y="1126" text-anchor="middle" font-size="12.6" font-weight="400" fill="#506878">话题 ↔ session · 复盘接管</text>
+    <!-- Notification & Approval Channels (No IM Chat!) -->
+    <rect x="480" y="1032" width="562" height="112" rx="10" fill="#ffffff" stroke="#b7c5c9" stroke-width="1.4"/>
+    <text x="761" y="1065" text-anchor="middle" font-size="19.5" font-weight="700" fill="#183348">通知与审批渠道（飞书 / Telegram）</text>
+    <path d="M512 1081 H1010" stroke="#e4ecef" stroke-width="1.1" fill="none"/>
+    <text x="761" y="1105" text-anchor="middle" font-size="13.8" font-weight="400" fill="#334f61">仅通知与实盘审批（纯 Webhook，无聊天对话）</text>
+    <text x="761" y="1127" text-anchor="middle" font-size="12.6" font-weight="400" fill="#506878">交易告警 · 复盘摘要 · 实盘审批回调 · Watchdog 直连兜底</text>
 
-    <!-- Underlying Agent Harness -->
-    <rect x="1132" y="1032" width="198" height="112" rx="10" fill="#ffffff" stroke="#b7c5c9" stroke-width="1.4"/>
-    <text x="1231" y="1066" text-anchor="middle" font-size="18.5" font-weight="700" fill="#183348">Agent Harness</text>
-    <text x="1231" y="1095" text-anchor="middle" font-size="13.8" font-weight="400" fill="#334f61">Codex / Antigravity</text>
-    <text x="1231" y="1120" text-anchor="middle" font-size="12.5" font-weight="400" fill="#506878">远端侧边栏可见性 · MCP Tools</text>
+    <!-- Underlying Agent Harness (Aligns cleanly 1:1 under quant-agent!) -->
+    <rect x="1056" y="1032" width="274" height="112" rx="10" fill="#ffffff" stroke="#b7c5c9" stroke-width="1.4"/>
+    <text x="1193" y="1065" text-anchor="middle" font-size="19" font-weight="700" fill="#183348">Agent Harness</text>
+    <text x="1193" y="1094" text-anchor="middle" font-size="13.8" font-weight="400" fill="#334f61">Codex / Antigravity（App &amp; CLI）</text>
+    <text x="1193" y="1119" text-anchor="middle" font-size="12.6" font-weight="400" fill="#506878">远端侧边栏可见性 · 共享 MCP Tools</text>
 
     <!-- Split SQLite & Immutable Strategy Registry -->
     <rect x="1344" y="1032" width="274" height="112" rx="10" fill="#ffffff" stroke="#b7c5c9" stroke-width="1.4"/>
@@ -310,22 +307,21 @@
     <path d="M1097 742 H1424 V821" stroke="#086e66" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#flow)"/>
     <text x="1312" y="734" text-anchor="middle" font-size="13.5" font-weight="700" fill="#086e66">按 seq 订阅全量事件流 (断线补写)</text>
 
-    <!-- 11. Tier 3 -> Tier 4 (5 Straight Vertical Lines! Zero bends, zero crossings!) -->
-    <!-- Watchdog -> IM (Direct Fallback Alert) -->
+    <!-- 11. Tier 3 -> Tier 4 (4 Straight Vertical Lines! Zero bends, zero crossings!) -->
+    <!-- Watchdog -> Notification Channels (Direct Fallback Alert) -->
     <path d="M617 945 V1029" stroke="#b85432" stroke-width="2" fill="none" stroke-linecap="round" stroke-dasharray="6 5" marker-end="url(#watch)"/>
     <text x="628" y="998" text-anchor="start" font-size="13" font-weight="700" fill="#b85432">直连兜底告警</text>
 
-    <!-- Notifier <-> IM (Alerts & Approval Callback) -->
-    <path d="M856 947 V1029" stroke="#086e66" stroke-width="2" fill="none" stroke-linecap="round" marker-start="url(#flow-start)" marker-end="url(#flow)"/>
-    <text x="867" y="998" text-anchor="start" font-size="13" font-weight="400" fill="#334f61">通知 / 审批回调</text>
+    <!-- Notifier <-> Notification Channels (Alerts & Approval Callback) -->
+    <path d="M905 947 V1029" stroke="#086e66" stroke-width="2" fill="none" stroke-linecap="round" marker-start="url(#flow-start)" marker-end="url(#flow)"/>
+    <text x="916" y="998" text-anchor="start" font-size="13" font-weight="400" fill="#334f61">通知摘要 / 审批回调</text>
 
-    <!-- Agent <-> IM (Mobile Chat & Review Handoff) -->
-    <path d="M1082 947 V1029" stroke="#086e66" stroke-width="2" fill="none" stroke-linecap="round" marker-start="url(#flow-start)" marker-end="url(#flow)"/>
-    <text x="1093" y="998" text-anchor="start" font-size="13" font-weight="400" fill="#593b8a">IM 对话 / 复盘</text>
+    <!-- Agent -> Notifier (Report Summary via notifier.sock) -->
+    <path d="M1055 883 H1044" stroke="#5e7c74" stroke-width="1.6" fill="none" stroke-linecap="round" marker-end="url(#inner)"/>
 
     <!-- Agent <-> Underlying Agent Harness -->
-    <path d="M1231 947 V1029" stroke="#086e66" stroke-width="2" fill="none" stroke-linecap="round" marker-start="url(#flow-start)" marker-end="url(#flow)"/>
-    <text x="1242" y="998" text-anchor="start" font-size="13" font-weight="400" fill="#334f61">Harness 适配</text>
+    <path d="M1193 947 V1029" stroke="#086e66" stroke-width="2" fill="none" stroke-linecap="round" marker-start="url(#flow-start)" marker-end="url(#flow)"/>
+    <text x="1204" y="998" text-anchor="start" font-size="13" font-weight="400" fill="#334f61">Harness 适配调用</text>
 
     <!-- Storage <-> Split SQLite & Strategy Registry -->
     <path d="M1481 947 V1029" stroke="#086e66" stroke-width="2" fill="none" stroke-linecap="round" marker-start="url(#flow-start)" marker-end="url(#flow)"/>

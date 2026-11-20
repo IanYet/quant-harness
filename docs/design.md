@@ -87,10 +87,9 @@ quant-harness/
 │   │   └── webhook-server.ts     # 审批回调 & 白名单管理员指令 -> admin.sock
 │   ├── agent/                    # quant-agent 外围进程
 │   │   ├── main.ts
-│   │   ├── db.ts                 # agent.db（会话映射、任务表、预算计数、去重冷却）
+│   │   ├── db.ts                 # agent.db（会话索引、任务表、预算计数、去重冷却）
 │   │   ├── guardrails.ts         # 四道护栏（去重/冷却、并发/写锁/预算、Profile、反递归）
 │   │   ├── scheduler.ts          # 定时全局复盘 Cron 调度器
-│   │   ├── im-bridge.ts          # 飞书/Telegram 独立对话 Bot Webhook（话题 <-> session_id）
 │   │   ├── server.ts             # agent.sock HTTP Server
 │   │   └── adapters/
 │   │       ├── interface.ts      # AgentHarnessAdapter 统一接口与 sidebarVisibility 契约
@@ -123,7 +122,7 @@ quant-harness/
 ├── db/
 │   ├── ledger.db                 # SQLite WAL：订单/成交/Shadow/Checkpoint/策略索引
 │   ├── timeseries.db             # SQLite WAL：BTCUSDT K线/标记价费率/外部采集样本
-│   └── agent.db                  # SQLite WAL：IM 话题映射/任务/去重/预算
+│   └── agent.db                  # SQLite WAL：会话索引/任务/去重/预算
 ├── state/
 │   ├── core.db                   # core 独写，序号、关键事件、订单意图及控制状态
 │   └── checkpoints/              # 当前 Checkpoint 的原子热备文件
@@ -137,7 +136,7 @@ quant-harness/
 ├── agent-hidden/                 # Antigravity hidden/ephemeral 隔离 app-data-dir
 └── secrets/                      # 0700，0600 配置文件
     ├── exchange.json             # 实盘与 Demo 凭据（core 及启用应急撤单的 watchdog 读取）
-    └── im.json                   # 告警审批 Bot、Agent 对话 Bot 与 watchdog 兜底凭据
+    └── im.json                   # 通知审批 Bot 与 watchdog 兜底凭据（无对话 Bot）
 ```
 
 ### 2.3 配置结构与热重载边界
@@ -183,17 +182,14 @@ quant-harness/
   },
   "im": {
     "notifierListen": { "host": "127.0.0.1", "port": 18101 },
-    "agentListen": { "host": "127.0.0.1", "port": 18102 },
     "telegram": {
       "enabled": true,
       "alertChatId": "-100...",
-      "agentChatId": "-100...",
       "allowedAdminUserIds": ["123456789"]
     },
     "feishu": {
       "enabled": true,
       "alertChatId": "oc_...",
-      "agentChatId": "oc_...",
       "allowedAdminOpenIds": ["ou_..."]
     }
   },
@@ -215,7 +211,7 @@ quant-harness/
       }
     },
     "profiles": {
-      "im_user":          { "defaultVisibility": "visible", "maxTurns": 40, "timeoutSec": 900 },
+      "user":             { "defaultVisibility": "visible", "maxTurns": 40, "timeoutSec": 900 },
       "cron_review":      { "defaultVisibility": "visible", "maxTurns": 20, "timeoutSec": 600 },
       "script_triggered": { "defaultVisibility": "visible", "maxTurns": 10, "timeoutSec": 300 }
     },
@@ -247,12 +243,10 @@ quant-harness/
 ```
 
 - **热重载（`reload`）范围**：仅重载各子账户的 `requireApproval`、`requireApprovalOnStop`、`risk`、`labels` 与 `shadow.risk`；`marginType` / `initialLeverage` 仅在账户连接初始化时校验与设置；新增或移除交易所 API 凭证（含 Shadow 池账户）需重启对应连接。
-- **凭据文件**。`secrets/exchange.json` 结构为 `{ accounts: { [accountId]: { apiKey, apiSecret } }, shadow: { [shadowAccountId]: { apiKey, apiSecret } } }`，权限 `0600`，由 `quant-core`（及开启应急撤单时的 `quant-watchdog`）直接读取；`secrets/im.json` 拆分告警审批 Bot、对话 Bot 与 watchdog 兜底凭据；托管脚本通过环境变量仅获取本次运行的 `QUANT_TOKEN`，不注入任何密钥。
-- **Webhook 路由映射（Nginx/Caddy HTTPS 反代示例）**：
+- **凭据文件**。`secrets/exchange.json` 结构为 `{ accounts: { [accountId]: { apiKey, apiSecret } }, shadow: { [shadowAccountId]: { apiKey, apiSecret } } }`，权限 `0600`，由 `quant-core`（及开启应急撤单时的 `quant-watchdog`）直接读取；`secrets/im.json` 存放飞书/Telegram 通知审批 Bot 与 watchdog 兜底凭据；托管脚本通过环境变量仅获取本次运行的 `QUANT_TOKEN`，不注入任何密钥。
+- **Webhook 路由映射（Nginx/Caddy HTTPS 反代示例，仅通知与审批）**：
   - `https://<domain>/webhooks/telegram/notifier` → `http://127.0.0.1:18101/webhooks/telegram`
   - `https://<domain>/webhooks/feishu/notifier` → `http://127.0.0.1:18101/webhooks/feishu`
-  - `https://<domain>/webhooks/telegram/agent` → `http://127.0.0.1:18102/webhooks/telegram`
-  - `https://<domain>/webhooks/feishu/agent` → `http://127.0.0.1:18102/webhooks/feishu`
 
 ---
 
@@ -545,7 +539,7 @@ export declare const agents: {
   startTask(req: {
     dedupKey: string;
     prompt: string;
-    title?: string;                              // 侧边栏与 IM 话题标题
+    title?: string;                              // 远端 App 侧边栏会话标题与通知摘要标题
     backend?: string;                            // 指定后端（如 "codex" | "antigravity"），默认 defaultBackend
     visibility?: "visible" | "hidden" | "ephemeral"; // 默认跟随 profile（script_triggered 默认 "visible"）
     context?: Record<string, unknown>;
@@ -737,7 +731,7 @@ CREATE INDEX idx_strategy_tags_lookup ON strategy_tags(dimension, value);
 CREATE TABLE strategy_notes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   strategy_id TEXT NOT NULL REFERENCES strategies(strategy_id),
-  author TEXT NOT NULL,          -- im_user | cron_review | human
+  author TEXT NOT NULL,          -- user | cron_review | human
   note TEXT NOT NULL,
   created_at INTEGER NOT NULL
 );
@@ -829,9 +823,9 @@ CREATE INDEX idx_data_samples_visible ON data_samples(dataset, ingested_ts, seq)
 ### 6.2 `quant-notifier`（告警与实盘审批网关，纯 Webhook）
 
 - **通知投递**。订阅成交、拒单、提案、熔断、告警和运行事件。先把相应 `seq` 和收件目标写入本地持久待投递队列，再确认订阅水位。重放按 `(seq, 目标)` 去重，普通同类告警按 `alertKey` 冷却 60 秒。审批按 `proposalId` 投递，失败保留结果并按指数退避重试。
-- **两个 Bot 共用入站校验**。按实际入口选用 notifier 或 agent 自己的凭据，以及本平台配置的 `alertChatId` 或 `agentChatId`。业务事件必须来自该入口对应的会话，且发送者属于本平台操作员白名单。对回复、指令和卡片回调均先做校验，再查话题、创建任务或变更状态。
+- **通知与审批入站校验**。全系统仅由 `quant-notifier` 对接飞书 / Telegram Webhook（仅通知与审批，不提供聊天对话功能）。业务事件必须来自本平台配置的 `alertChatId`，且发送者属于本平台操作员白名单；通过校验后再执行审批回调或管理员指令。
   - Telegram 校验 `X-Telegram-Bot-Api-Secret-Token`、实际消息/回调的 `chat.id` 与 `from.id`。使用 `update_id` 做持久去重。[Telegram Webhook 文档](https://core.telegram.org/bots/api#setwebhook)
-  - 飞书使用各应用配置的 Encrypt Key 对原始请求体验签，校验时间、应用身份、会话与 `open_id`，按事件 ID 或交互的唯一投递标识去重。若卡片只带消息标识，按已投递消息记录核对会话。配置阶段的 `url_verification` 按平台约定验证后仅回送 challenge。[飞书回调校验](https://open.feishu.cn/document/event-subscription-guide/callback-subscription/receive-and-handle-callbacks)
+  - 飞书使用应用配置的 Encrypt Key 对原始请求体验签，校验时间、应用身份、会话与 `open_id`，按事件 ID 或交互的唯一投递标识去重。若卡片只带消息标识，按已投递消息记录核对会话。配置阶段的 `url_verification` 按平台约定验证后仅回送 challenge。[飞书回调校验](https://open.feishu.cn/document/event-subscription-guide/callback-subscription/receive-and-handle-callbacks)
 - **审批与运维**。在 `127.0.0.1:18101` 接收审批按钮及 `/unkill`、`/reload`、`/status`。按钮引用与投递记录绑定的短 ID，服务端查回完整 `proposalId + proposalDigest` 后调用控制面。记录已验证操作者与消息 ID，按 core 返回的实际状态更新卡片。平台重试、两个 IM 平台或 MCP 重复确认只执行一次。
 - **本地 `notifier.sock`**：暴露 `GET /v1/health` 与 `POST /v1/notify`（供 Agent MCP Tool `notify_send` 投递诊断/复盘摘要，带每分钟 10 条限流保护）。
 
@@ -844,26 +838,11 @@ CREATE TABLE sessions (
   session_id TEXT PRIMARY KEY,        -- 内部唯一 ID
   backend TEXT NOT NULL,              -- codex | antigravity | ...
   backend_session_id TEXT NOT NULL,   -- Codex threadId / agy conversationId
-  profile TEXT NOT NULL,              -- im_user | cron_review | script_triggered
+  profile TEXT NOT NULL,              -- user | cron_review | script_triggered
   sidebar_visibility TEXT NOT NULL,   -- visible | hidden | ephemeral
   title TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
-);
-
-CREATE TABLE im_thread_map (
-  platform TEXT NOT NULL,
-  thread_key TEXT NOT NULL,           -- 含已验证的 bot、chatId 和话题/根消息 ID
-  session_id TEXT NOT NULL REFERENCES sessions(session_id),
-  created_at INTEGER NOT NULL,
-  PRIMARY KEY (platform, thread_key)
-);
-
-CREATE TABLE im_deliveries (
-  bot TEXT NOT NULL,                  -- 平台及应用标识
-  delivery_id TEXT NOT NULL,
-  task_id TEXT NOT NULL,
-  PRIMARY KEY (bot, delivery_id)
 );
 
 CREATE TABLE tasks (
@@ -871,7 +850,7 @@ CREATE TABLE tasks (
   session_id TEXT REFERENCES sessions(session_id),
   profile TEXT NOT NULL,
   backend TEXT NOT NULL,
-  source TEXT NOT NULL,               -- im | cron | script | api
+  source TEXT NOT NULL,               -- user | cron | script | api
   dedup_key TEXT,
   depth INTEGER NOT NULL DEFAULT 0,
   status TEXT NOT NULL,               -- queued | running | completed | failed | canceled
@@ -907,7 +886,7 @@ CREATE TABLE daily_usage (
 
 ```ts
 export type SidebarVisibility = "visible" | "hidden" | "ephemeral";
-export type AgentProfile = "im_user" | "cron_review" | "script_triggered";
+export type AgentProfile = "user" | "cron_review" | "script_triggered";
 
 export interface AdapterStartOptions {
   prompt: string;
@@ -934,7 +913,7 @@ export interface AgentHarnessAdapter {
   - 所有可信会话使用同一个 `mcp_servers.quant_harness` 配置及运维工具集。`QUANT_MCP_PROFILE` 与任务来源用于组装提示词和审计。各 Profile 共用部署配置的工作区及草稿写目录，运行时限单独设置。
   - **侧边栏可见性精准控制（已核对本机 `codex 0.169.0` 协议 Schema）**：
     - `visible`：`thread/start({ ephemeral: false, ... })` + `thread/name/set` 写入主 `$CODEX_HOME`，直接显示在 Codex App 侧边栏；
-    - `hidden`：`thread/start({ ephemeral: false, ... })` 执行完首轮后调用 `thread/archive({ threadId })` 隐藏出侧边栏，保留完整上下文可随时 `thread/resume`；若交易员后续在 IM 接管或显式切可见，调用 `thread/unarchive({ threadId })` 即刻恢复在侧边栏显示；
+    - `hidden`：`thread/start({ ephemeral: false, ... })` 执行完首轮后调用 `thread/archive({ threadId })` 隐藏出侧边栏，保留完整上下文可随时 `thread/resume` 或通过 `thread/unarchive({ threadId })` 恢复在侧边栏显示；
     - `ephemeral`：`thread/start({ ephemeral: true, ... })`，不落盘、绝不出现在侧边栏。
   - 取消任务调用 `turn/interrupt`。
 - **后端 2：`AntigravityAdapter`（`agy` / `agy acp`）**
@@ -944,19 +923,18 @@ export interface AgentHarnessAdapter {
     - `hidden`：通过 `agy acp --app-data-dir <hiddenAppDataDir> --stdio` 将会话隔离至独立数据目录，不污染主 App 侧边栏，同时持久保留 `conversationId` 供续聊；
     - `ephemeral`：分配一次性临时目录 `--app-data-dir <tmpDir>`，任务结束立即清理目录。
   - **实现期首个实测项**：编码对接 `AntigravityAdapter` 时第一时间在本机实测 `agy` 写入 `visibleAppDataDir` 后桌面/远程 Antigravity App 侧边栏的实时刷新行为，如底层数据目录路径或远程项目参数需微调，直接落入配置项而无需改上层接口。
-- **多后端扩展**：在 `config.agent.backends` 中新增配置并向 `adapters/registry.ts` 注册即可扩展 Claude Code / OpenCode 等，消息或任务可通过指定 `backend`（或在 IM 指令前缀如 `@agy` / `@codex`）自由选择后端，未指定时使用 `defaultBackend`。
+- **多后端扩展**：在 `config.agent.backends` 中新增配置并向 `adapters/registry.ts` 注册即可扩展 Claude Code / OpenCode 等，调用 `agent.sock` 或 `agents.startTask` 时可通过 `backend` 自由选择后端，未指定时使用 `defaultBackend`。
 
-#### (3) IM 双向对话（独立 Bot，纯 Webhook，监听 `127.0.0.1:18102`）
-- 对话 Bot 在创建会话、查找原话题、接管和 `/show`、`/hide` 前一律执行 §6.2 的入站校验。通过后，将投递 ID 与新任务在 `agent.db` 同事务登记，再应答平台；重复投递返回已有任务。
-- 新话题以 `im_user`、`visible` 开始；同一已验证平台、Bot、会话和话题的回复按 `im_thread_map` 续聊。交易员接管时为新轮次注入 `im_user` 提示词，保留原会话 ID、来源和历史记录。
-- 需要“侧边栏打开 / 回复即接管”的定时报告和脚本唤起任务默认使用持久 `visible` 会话（脚本也可通过 `agents.startTask({ visibility })` 显式指定 `hidden` 或 `ephemeral`）。投递报告到 IM 对话频道时同步登记 `im_thread_map`，服务重启后仍可从 Codex / Antigravity App 远端项目侧边栏或 IM 原话题继续聊。显式选择 `ephemeral` 的一次性输出标明“回复将开启新会话”，不登记续聊映射。
+#### (3) 任务报告推送与 App 侧边栏接管
+- 交易员与 Agent 的交互对话直接在 Codex App / Antigravity App（SSH Connect）或 SSH 终端 CLI 中进行，飞书与 Telegram 仅用于接收通知与审批，不提供对话桥接。
+- `cron_review` 与 `script_triggered` 任务默认以 `visible` 启动，完成后经 `notifier.sock /v1/notify` 向飞书 / Telegram 推送一条摘要通知（附后端名、会话标题与 `sessionId`）；交易员看到通知后直接从对应 App 的远端项目侧边栏打开该会话接着聊。脚本也可通过 `agents.startTask({ visibility })` 显式指定 `hidden` 或 `ephemeral`。
 
 #### (4) 定时全局复盘与四道护栏
-- **Cron Scheduler**：内置极简 5 字段 cron 解析器，每分钟检查 `config.agent.cron`，到期发起 `cron_review` 任务（自动注入当日聚合提示词，引导 Agent 查询各账户绩效、成交、Checkpoint 演进、采集健康，结合当下 BTC 状态给策略追加归因笔记并按 `regime` 召回可唤醒的 `shelved` 策略）。
+- **Cron Scheduler**：内置极简 5 字段 cron 解析器，每分钟检查 `config.agent.cron`，到期发起 `cron_review` 任务（自动注入当日聚合提示词，引导 Agent 查询各账户绩效、成交、Checkpoint 演进、采集健康，结合当下 BTC 状态给策略追加归因笔记并按 `regime` 召回可唤醒的 `shelved` 策略，完成后经 `quant-notifier` 推复盘摘要）。
 - **四道护栏（`guardrails.ts`，针对所有 `agent.request` 订阅事件及 API 请求）**：
   1. **去重与查询**。收到 `agent.request` 时沿用 core 的 `taskId`。按 `(source_scope, dedupKey)` 在同一事务创建任务或登记原 ID 指向已有任务的别名，然后确认订阅。重放相同 ID 不重复计费或启动。查询别名返回 `{ taskId, canonicalTaskId, status, ... }`。预算等原因拒绝已接收请求时持久记录 `failed` 和原因。
   2. **资源限额**。并发、写会话互斥、超时和 UTC 日预算对所有任务统一适用。写会话退出或被终止后释放写锁。
-  3. **Profile 提示词**。`im_user` 跟随经验证的交易员指令；`cron_review` 默认归因、更新备注并发报告；`script_triggered` 默认分析上下文并给出诊断。后两类遇到改变实盘状态的建议先报告并询问。所有 Profile 注册 §7.1 同一工具集。
+  3. **Profile 提示词**。`user` 跟随交易员指令；`cron_review` 默认归因、更新备注并发复盘报告；`script_triggered` 默认分析上下文并给出诊断。后两类遇到改变实盘状态的建议先报告并询问。所有 Profile 注册 §7.1 同一工具集。
   4. **反递归**。调度器根据已登记的父任务计算 `depth` 并执行 `maxDepth=1`，达到上限的任务创建请求返回结构化拒绝。工具目录对各 Profile 一致。
 
 ### 6.4 `quant-watchdog`（独立外部看门狗）
@@ -1010,6 +988,6 @@ bun run ops -- reject  <proposalId> [reason]       # IM 故障时的本机驳回
 | **P1** | storage 双库、策略库、验证与打包 | 两库交错提交后强制中断并从较小游标恢复，核对行情、成交与费用各一份。验证同名并发封存、写入中断恢复、SDK 版本变化、来源或产物校验失败。用只引用 SDK 版本的基础设施入口在仓库外离线加载产物 |
 | **P2** | core 事件、意图、风控、Checkpoint 与调度 | storage 离线时发布超过一个预留块并重启，订阅者游标持续前进。环缓冲溢出后重放关键事件。验证双信号只提交一次终态、旧 epoch 普通写拒绝、在途订单阻止换代、交接中重启及 stop 提案重复确认 |
 | **P3** | Binance 分路行情、私有对账、Shadow、SDK 与回测 | 独立中断标记价时盘口可用且开仓被拒。覆盖发单后丢回执、崩溃后同键重试、断线期间一开一平的成交及费用、10 倍杠杆收紧到 5 倍后仍能减仓。验证 10:05 发布的 10:00 因子在 10:01 的 query 和 watch 均不可见。使用配置的 Demo 账户联调 Hedge Mode 与账户独占 |
-| **P4** | 通知/对话的 Webhook 校验、运维及审计 | 两个 Bot 均覆盖错误凭据、错误会话、非白名单发送者、重复投递和回复接管。覆盖 notifier、ops 与 Agent 的批准/驳回、操作人记录、停机后持仓告警和 Kill Switch 解除 |
-| **P5** | 共享 MCP 工具、两个 Agent 后端、任务与报告 | 三种 Profile 的工具名集合相同，提示词及审计来源可区分。验证去重别名按初始 taskId 可查、资源限额和反递归。实测持久隐藏报告在服务重启后的续聊，以及一次性报告回复开启新会话 |
+| **P4** | 飞书/Telegram 通知审批 Webhook、`quant-ops` 及审计 | 覆盖错误凭据、错误会话、非白名单发送者、重复投递。覆盖 notifier、ops 与 Agent 的批准/驳回、操作人记录、停机后持仓告警和 Kill Switch 解除 |
+| **P5** | 共享 MCP 工具、两个 Agent 后端、Cron 复盘与护栏 | 三种 Profile 的工具名集合相同，提示词及审计来源可区分。验证去重别名按初始 taskId 可查、资源限额、反递归与报告推通知。实测 Codex 与 Antigravity 侧边栏 `visible / hidden / ephemeral` 及重启后续聊 |
 | **P6** | `quant-watchdog`、5 个常驻 `systemd` unit、反向代理与整机联调 | 验证 `Bun.spawn` 孤儿 PID 清理与 SDK 断连自保退出、并行 `readonly` 行情监听脚本触发 `visible` Agent 会话在 App 侧边栏出现并可续聊；验证各行情主题健康、存储滞后、直连兜底告警及应急撤单触发条件 |

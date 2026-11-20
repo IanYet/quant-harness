@@ -4,9 +4,9 @@
 
 在一台带公网 IP 的独立服务器上运行个人 Agent 量化交易工具（当前面向 Binance `BTC/USDT` U 本位永续合约）。
 
-平时主要通过 **Codex App / Antigravity App 的 SSH Connect** 打开远端项目、或 SSH 登录终端用 Codex CLI / Antigravity CLI、或手机上的 **飞书 / Telegram** 与 Agent 对话，由 Agent 负责研究、编写脚本、管理策略与定期复盘：
+平时主要通过 **Codex App / Antigravity App 的 SSH Connect** 打开远端项目、或 SSH 登录终端用 Codex CLI / Antigravity CLI 与 Agent 对话，由 Agent 负责研究、编写脚本、管理策略与定期复盘；手机上的 **飞书 / Telegram** 仅用于接收交易告警、复盘摘要通知及实盘变更审批：
 
-- **脚本驱动一切运行态**：Agent 编写脚本执行实盘交易、外部数据采集、回测验证或并行行情监听。例如 BTC 价格触及 60,000 USDT 时，行情监听脚本唤起另一个 Agent 新开任务研究过去一小时成交量变化；该会话默认显示在对应 App 的远端项目侧边栏中，并同步推到手机 IM 话题，随时点开接着聊。
+- **脚本驱动一切运行态**：Agent 编写脚本执行实盘交易、外部数据采集、回测验证或并行行情监听。例如 BTC 价格触及 60,000 USDT 时，行情监听脚本唤起另一个 Agent 新开任务研究过去一小时成交量变化；该会话默认显示在对应 App 的远端项目侧边栏中（并向飞书 / Telegram 推送一条报告摘要通知），随时从 App 侧边栏打开接着聊。
 - **确定性盘中执行 + 零中断迭代**：盘中实时下单完全由独立的确定性脚本进程完成，Agent 不参与盘中实时决策；每个子账户同一时间最多运行 1 个实盘策略（统一 Hedge Mode 双向持仓），多个行情监听与采集脚本可并行运行；实盘策略支持先经历史回测、交易所 Demo/Testnet（`shadow`）与小资金子账户验证，并在交易主进程持续运行不重启的前提下热替换（`replace`）。
 - **策略资产长期沉淀**：每个落地策略以不可变脚本文件持久化保存，配合衍生谱系、五维标签与验证归因记录，方便在未来行情状态回归时随时检索、复用与二次衍生。
 
@@ -40,8 +40,8 @@
 - **1 个常驻主进程 + 4 个独立外围进程**（任一外围模块重启或故障不中断实盘交易）：
   - `quant-core`：常驻交易与行情内核（不重启），承载 Binance 公共行情与多子账户池、账户独占锁与防呆风控、托管 Checkpoint、`Bun.spawn` 脚本调度与持久化有序事件总线。
   - `quant-storage`：订阅事件流异步落盘至分库 SQLite（`ledger.db` / `timeseries.db`）与滚动日志，管理不可变策略资产库，承接历史查询、预热与离线回测。
-  - `quant-notifier`：飞书与 Telegram 告警审批 Bot（独立频道），负责通知聚合降噪、审批卡片交互与管理员指令。
-  - `quant-agent`：复用 Codex / Antigravity 的 Agent 会话与任务网关（`agent.sock`），承接手机 IM 独立对话频道、定时全局复盘与带护栏的脚本异步唤起（默认侧边栏 `visible`）。
+  - `quant-notifier`：飞书与 Telegram 通知与审批 Bot（纯 Webhook），负责告警聚合降噪、复盘摘要推送、实盘审批卡片交互与管理员指令。
+  - `quant-agent`：复用 Codex / Antigravity 的 Agent 会话与任务网关（`agent.sock`），承接定时全局复盘、带护栏的脚本异步唤起与远端 App 侧边栏可见性控制（默认 `visible`），任务完成后经 `quant-notifier` 推送通知摘要。
   - `quant-watchdog`：独立外部看门狗，探测 5 进程健康、Event Loop 延迟与行情新鲜度，持有直连 IM 兜底告警与可选极端失联应急撤单。
 - **4 类隔离脚本角色**（均通过 `Bun.spawn` 拉起并注入 `QUANT_TOKEN`，统一 `import @quant/tools`）：
   - `live`：1 子账户 1 实盘策略，按不可变 `strategyId` 运行，受账户独占 Epoch 锁与防呆风控约束。
