@@ -1,5 +1,5 @@
 {
-  "dataDir": "/var/lib/quant-harness",
+  "dataDir": "../.quant",
   "defaultSymbol": "BTCUSDT",
   "symbols": ["BTCUSDT", "ETHUSDT"],
   "binance": {

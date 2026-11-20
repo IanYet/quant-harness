@@ -1,9 +1,9 @@
 node_modules/
-config/harness.json
+/config/*.json
+!/config/*.example.json
 secrets/
 .secrets/
 .env*
-!/.env_template
 *.tsbuildinfo
 
 .quant/

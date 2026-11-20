@@ -1,12 +1,13 @@
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
+import { localDataDirectory } from "@quant/tools/paths";
 
 const symbol = process.argv[2] ?? "BTCUSDT";
 const days = Number(process.argv[3] ?? 7);
 if (!/^[A-Z0-9]{2,32}$/.test(symbol) || !Number.isInteger(days) || days < 1 || days > 3650) {
   throw new Error("Usage: bun run funding-summary.ts SYMBOL DAYS");
 }
-const root = process.env.QUANT_DATA_DIR ?? "/var/lib/quant-harness";
+const root = localDataDirectory();
 const db = new Database(join(root, "db", "timeseries.db"), { readonly: true });
 try {
   db.exec("PRAGMA query_only=ON; PRAGMA busy_timeout=5000");

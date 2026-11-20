@@ -13,13 +13,15 @@ export function imSettings(config: HarnessConfig) {
   const telegramEnabled = flag(t.enabled, "telegram.enabled");
   const feishuEnabled = flag(f.enabled, "feishu.enabled");
   const useSharedFile = (telegramEnabled && t.credentialFile === undefined) || (feishuEnabled && f.credentialFile === undefined);
-  const secrets = useSharedFile ? readSecret(config.secretsDir, "im.json") : {};
+  const secrets = useSharedFile ? readSecret(config.secretsDir, "secrets.im.json") : {};
   const ts = telegramEnabled && t.credentialFile !== undefined ?
     readSecret(config.secretsDir, str(t.credentialFile, "telegram.credentialFile")) : record(secrets.telegram ?? {});
   const fs = feishuEnabled && f.credentialFile !== undefined ?
     readSecret(config.secretsDir, str(f.credentialFile, "feishu.credentialFile")) : record(secrets.feishu ?? {});
+  const telegramChat = t.alertChatId === undefined || t.alertChatId === "" ? ts.chatId : t.alertChatId;
   const telegram: TelegramSettings | undefined = !telegramEnabled ? undefined : {
-    chat: str(t.alertChatId, "telegram.alertChatId", /^-?\d+$/),
+    chat: str(typeof telegramChat === "number" && Number.isSafeInteger(telegramChat) ? String(telegramChat) : telegramChat,
+      "telegram.alertChatId", /^-?\d+$/),
     users: stringList(t.allowedAdminUserIds ?? [], "telegram.allowedAdminUserIds", /^\d+$/),
     botToken: str(ts.botToken, "telegram.botToken", /^\d+:[A-Za-z0-9_-]+$/),
     webhookSecret: str(ts.webhookSecret, "telegram.webhookSecret", /^[A-Za-z0-9_-]{1,256}$/),

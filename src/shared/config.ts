@@ -1,7 +1,7 @@
 import { readFileSync, statSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { join, isAbsolute } from "node:path";
-import { resolveLocalPath } from "../../packages/tools/paths";
+import { dirname, join } from "node:path";
+import { harnessConfigPath, resolveLocalPath, runtimeDataDirectory } from "../../packages/tools/paths";
 import { bad, flag, ID, integer, num, oneOf, record, str, stringList, SYMBOL } from "./http";
 
 export type AccountMode = "live" | "shadow";
@@ -34,7 +34,7 @@ export interface BinanceConfig {
 export type Service = "admin" | "runtime" | "storage" | "agent" | "notifier" | "watchdog";
 
 const credentialFilename = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\.json$/;
-export const configPath = () => resolveLocalPath(process.env.QUANT_CONFIG_PATH ?? "config/harness.json");
+export const configPath = harnessConfigPath;
 export const dataPath = () => dataDirOverride() ?? config().dataDir;
 export const socketPath = (dir: string, name: Service) => join(dir, "run", name + ".sock");
 
@@ -80,12 +80,12 @@ function endpoint(value: unknown, fallback: string, protocol: string): string {
 }
 
 export function config() {
-  const raw = record(JSON.parse(readFileSync(configPath(), "utf8")));
+  const file = configPath();
+  const raw = record(JSON.parse(readFileSync(file, "utf8")));
   const b = record(raw.binance ?? {});
   const shadow = record(raw.shadow ?? {});
-  const dataDir = dataDirOverride() ?? str(raw.dataDir ?? "/var/lib/quant-harness", "dataDir");
-  if (!isAbsolute(dataDir)) bad("dataDir must be absolute");
-  const secretsDir = resolveLocalPath(str(process.env.QUANT_SECRETS_DIR ?? "~/.secrets", "QUANT_SECRETS_DIR"));
+  const dataDir = dataDirOverride() ?? runtimeDataDirectory(file, raw.dataDir == null ? undefined : str(raw.dataDir, "dataDir"));
+  const secretsDir = dirname(file);
   const defaultSymbol = str(raw.defaultSymbol ?? "BTCUSDT", "defaultSymbol", SYMBOL);
   const symbols = stringList(raw.symbols ?? [defaultSymbol], "symbols", SYMBOL);
   if (!symbols.includes(defaultSymbol)) bad("symbols must contain defaultSymbol");
@@ -138,7 +138,7 @@ export function credentials(config: HarnessConfig, mode: AccountMode, id: string
   const accounts = mode === "live" ? config.liveAccounts : config.shadowAccounts;
   const account = Object.hasOwn(accounts, id) ? accounts[id] : bad("Unknown " + mode + " account " + id);
   const entries = account.credentialFile ? undefined : record(
-    readSecret(config.secretsDir, "exchange.json")[mode === "live" ? "accounts" : "shadow"] ?? {},
+    readSecret(config.secretsDir, "secrets.exchange.json")[mode === "live" ? "accounts" : "shadow"] ?? {},
   );
   const v = account.credentialFile ? readSecret(config.secretsDir, account.credentialFile) :
     record(entries && Object.hasOwn(entries, id) ? entries[id] : undefined, "Missing " + mode + " credentials for " + id);
