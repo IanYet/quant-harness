@@ -85,7 +85,7 @@ export function config() {
   const shadow = record(raw.shadow ?? {});
   const dataDir = dataDirOverride() ?? str(raw.dataDir ?? "/var/lib/quant-harness", "dataDir");
   if (!isAbsolute(dataDir)) bad("dataDir must be absolute");
-  const secretsDir = resolveLocalPath(str(process.env.QUANT_SECRETS_DIR ?? "~/.screets", "QUANT_SECRETS_DIR"));
+  const secretsDir = resolveLocalPath(str(process.env.QUANT_SECRETS_DIR ?? "~/.secrets", "QUANT_SECRETS_DIR"));
   const defaultSymbol = str(raw.defaultSymbol ?? "BTCUSDT", "defaultSymbol", SYMBOL);
   const symbols = stringList(raw.symbols ?? [defaultSymbol], "symbols", SYMBOL);
   if (!symbols.includes(defaultSymbol)) bad("symbols must contain defaultSymbol");

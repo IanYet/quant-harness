@@ -40,7 +40,7 @@ test("dotenv resolves the credential, config and runtime paths independently", a
       !["QUANT_CONFIG_PATH", "QUANT_DATA_DIR", "QUANT_SECRETS_DIR"].includes(name))) });
     expect(run.exitCode).toBe(0);
     expect(JSON.parse(run.stdout.toString())).toEqual({
-      dataDir: join(dir, "runtime"), secretsDir: secrets, defaultSecretsDir: join(homedir(), ".screets"),
+      dataDir: join(dir, "runtime"), secretsDir: secrets, defaultSecretsDir: join(homedir(), ".secrets"),
       live: true, demo: true, telegram: true,
     });
     expect(() => readSecret(secrets, "../harness.json")).toThrow("Invalid credential filename");

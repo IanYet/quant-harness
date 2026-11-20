@@ -2,7 +2,6 @@ node_modules/
 config/harness.json
 secrets/
 .secrets/
-.screets/
 .env*
 !/.env_template
 *.tsbuildinfo

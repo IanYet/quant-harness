@@ -151,7 +151,7 @@ quant-harness/
 
 主配置 `config/harness.json`（由 `QUANT_CONFIG_PATH` 指定）：
 
-本地从 `.env_template` 创建仓库根目录 `.env`，由 Bun 自动加载。`QUANT_CONFIG_PATH` 指向主配置，`QUANT_DATA_DIR` 指向运行目录，`QUANT_SECRETS_DIR` 指向站外服务的凭据目录，默认 `~/.screets`。Git 跟踪 `.env_template`，本机 `.env` 被忽略。
+本地从 `.env_template` 创建仓库根目录 `.env`，由 Bun 自动加载。`QUANT_CONFIG_PATH` 指向主配置，`QUANT_DATA_DIR` 指向运行目录，`QUANT_SECRETS_DIR` 指向站外服务的凭据目录，默认 `~/.secrets`。Git 跟踪 `.env_template`，本机 `.env` 被忽略。
 
 ```jsonc
 {
