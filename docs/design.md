@@ -7,7 +7,7 @@
 ## 1. 设计约束与最小实现原则
 
 1. **按功能直写，拒绝过度抽象**：
-   - **交易所**：直接实现 **Binance USDⓈ-M Futures** 客户端（默认 `BTCUSDT`，支持多标的观测与按账户配置交易标的 + Demo/Testnet），不设计多交易所插件框架；完整对齐 Binance 官方 USDⓈ-M WebSocket 行情流、Market Data REST API 及新版 Algo Order 条件单服务。
+   - **交易所**。直接实现 **Binance USDⓈ-M Futures** 客户端，支持多标的观测、按账户配置交易标的和 Demo/Testnet 联调。网关对接官方 WebSocket 行情流、Market Data REST API 与 Algo Order 条件单服务。
    - **IM 通道**：本机（腾讯云东京区）具备公网 HTTPS 入口，**仅实现 Webhook 模式**（`Bun.serve` 本地监听，挂在本机 Nginx/Caddy HTTPS 反代后）；不做 Telegram Long Polling，也不接飞书 WebSocket 长连接；直接用原生 `fetch()` 调用 Telegram Bot API 与飞书 Open API，不引入重型 Bot SDK。
    - **运行时与存储**：全面使用 Bun 内置能力（`Bun.serve` UDS/HTTP、`bun:sqlite`、`Bun.spawn`、原生 `WebSocket`/`fetch`、`node:crypto`），不引入 ORM、Web 框架、队列库或复杂构建链。
 2. **仅在明确要求处保留抽象**：
@@ -20,7 +20,7 @@
    - 托管与封存脚本维持**纯 Bun + TS、单文件 `.ts`、唯一运行时导入 `@quant/tools`、静态预检与 `Bun.build` 单文件打包**；终端直跑的一次性研究脚本（`scripts/research/`）同样采用纯 Bun + TS（可直接使用 Bun 内置能力与只读 `bun:sqlite`），不引入 Python 或外部依赖蔓延。
 5. **可信运维、三层交互与受控手动干预**：
    - 人工操作员和已接入的可信 Agent 共享控制面契约（精简 11 核心 MCP + 统一本机 CLI `quant` + 本地只读 SQLite WAL）。
-   - 盘中高频自动化交易由持有账户独占租约的托管策略执行；交易员明确指示的单次手动交易干预（开平仓、挂条件止损、撤单、调杠杆）经 `quant-core` 同一套风控、审批门与审计日志执行，不抢占策略租约。交易所 API 密钥仅由网关持有。
+   - 盘中自动化交易由持有账户独占租约的托管策略执行。交易员授权的单次手动干预（开平仓、挂条件止损、撤单、调杠杆）同样经 `quant-core` 风控、审批和审计。策略继续持有原租约，网关负责交易签名。
 
 ---
 
@@ -144,7 +144,7 @@ quant-harness/
 │   └── <role>/<name>/<run_id>.log
 ├── agent-hidden/                 # Antigravity hidden/ephemeral 隔离 app-data-dir
 └── secrets/                      # 0700，0600 配置文件
-    ├── exchange.json             # 实盘与 Demo 凭据（仅 core 及启用应急撤单的 watchdog 读取）
+    ├── exchange.json             # 实盘与 Demo 签名凭据，供 core 及启用应急撤单的 watchdog 使用
     └── im.json                   # 通知审批 Bot 与 watchdog 兜底凭据（无对话 Bot）
 ```
 
@@ -266,7 +266,7 @@ quant-harness/
 ```
 
 - **热重载（`reload`）范围**：支持热重载全局 `symbols`（动态增减基础常驻流订阅，并同步初始化新标的 K 线聚合器）、各子账户的 `allowedSymbols`（新增标的即刻触发该标的的保证金/杠杆校验）、`requireApproval`、`requireApprovalOnStop`、`requireApprovalOnManualTrade`、`risk`、`labels` 与 `shadow.risk`；`marginType` / `initialLeverage` 仅在账户/标的初始化时校验与设置；新增或移除交易所 API 凭证需重启对应连接。
-- **凭据文件**：`secrets/exchange.json` 结构为 `{ accounts: { [accountId]: { apiKey, apiSecret } }, shadow: { [shadowAccountId]: { apiKey, apiSecret } } }`，权限 `0600`，仅 `quant-core`（及开启应急撤单时的 `quant-watchdog`）可读；`secrets/im.json` 存放通知审批 Bot 与 watchdog 兜底凭据；托管脚本仅获发当次 `QUANT_TOKEN`，不注入任何密钥。
+- **凭据文件**。`secrets/exchange.json` 结构为 `{ accounts: { [accountId]: { apiKey, apiSecret } }, shadow: { [shadowAccountId]: { apiKey, apiSecret } } }`，权限为 `0600`。同一系统用户下的进程共享文件权限，Agent 和脚本按可信约定使用网关。`quant-core` 与启用应急撤单的 `quant-watchdog` 按需读取交易凭据。通知凭据放在 `secrets/im.json`，托管脚本通过当次 `QUANT_TOKEN` 调用服务。
 - **Webhook 路由映射（Nginx/Caddy HTTPS 反代示例，仅通知与审批）**：
   - `https://<domain>/webhooks/telegram/notifier` → `http://127.0.0.1:18101/webhooks/telegram`
   - `https://<domain>/webhooks/feishu/notifier` → `http://127.0.0.1:18101/webhooks/feishu`
@@ -304,7 +304,7 @@ quant-harness/
     seq: number;        // 全局严格单调递增整数
     ts: number;         // Unix 毫秒时间戳
     topic: EventTopic;
-    source: string;     // 如 "binance.public" | "account:sub_main" | "run:<runId>" | "manual" | "core"
+    source: string;     // 如 "binance.mainnet" | "binance.testnet" | "account:sub_main" | "run:<runId>" | "manual" | "core"
     payload: T;
   }
   ```
@@ -319,7 +319,7 @@ quant-harness/
     - `market.mark_price`（`symbol`, `markPrice`, `indexPrice`, `fundingRate`, `nextFundingTime`, `eventTs`）
     - `market.liquidation`（来自 `{symbol}@forceOrder`：`symbol`, `side`, `orderType`, `price`, `avgPrice`, `qty`, `filledQty`, `status`, `tradeTime`）
     - `market.contract_info`（来自 `!contractInfo`：合约上市/下架/保证金阶梯变更通知）
-  - 交易与条件单：`trade.order`、`trade.algo_order`（来自 `ALGO_UPDATE`）、`trade.fill`、`trade.position`、`trade.account`、`trade.income`、`trade.risk_reject`，以及对应的 `shadow.order`、`shadow.algo_order`、`shadow.fill`、`shadow.position`、`shadow.account`、`shadow.income`
+  - 账户事件使用 `trade.*`（实盘）或 `shadow.*`（测试账户）前缀，后缀为 `order`、`algo_order`（来自 `ALGO_UPDATE`）、`fill`、`position`、`account`、`income` 或 `risk_reject`。
   - 数据与状态：`data.sample`（`dataset`, `ts`, `ingestedTs`, `key?`, `payload`, `runId`）、`state.checkpoint`（`namespace`, `accountId?`, `version`, `epoch`, `schemaVersion`, `updatedAt`, `data`）
   - 通知、Agent 与系统：`sys.notify`（托管脚本 `notify.send()` 写入：`runId`, `level`, `title`, `body`, `dedupKey?`, `cooldownSec?`）、`agent.request`、`agent.task_update`、`sys.handover`、`sys.proposal`、`sys.run_lifecycle`、`sys.kill_switch`、`sys.operation`、`sys.alert`、`sys.heartbeat`（无 `seq`）
 
@@ -346,7 +346,7 @@ quant-harness/
 | `GET /v1/state/:namespace` | 读取热内存 Checkpoint |
 | `GET /v1/runs?mode=&status=` | 列出运行中及近期托管脚本（含能力标签与 `codeHash`） |
 | `POST /v1/runs/start` | 启动免审批托管脚本：`worker`（指定 `entryPath`、`persistent?`、`stateName?` 与可组合 `capabilities: { accountRead?, publishDatasets?, notify?, agentTask? }`）或 `shadow`（接受 `strategyId` 或 `draftPath`，占用 Shadow 池空闲账户，池满返回 `409 SHADOW_LOCKED`；数据集冲突返回 `409 DATASET_LOCKED`） |
-| `POST /v1/runs/:runId/stop` | 接受 `{ cancelOpenOrders?: boolean, includeConditional?: boolean, reason? }`。实盘开启 `requireApprovalOnStop` 时返回 `202 { proposalId, status: "pending_approval" }`；其余直接按 §4.3 停止并交接 |
+| `POST /v1/runs/:runId/stop` | 接受 `{ reason?: string }`。实盘开启 `requireApprovalOnStop` 时返回 `202 { proposalId, status: "pending_approval" }`，确认后执行。策略按 §4.3 的默认规则和可选 `onStop` 收尾。停止 `worker` 时回收终态并释放其数据集 |
 | `POST /v1/live/propose` | 按不可变 `strategyId` 发起实盘上线或替换（含 `handoverOrders: "adopt" | "cancel_open"`、`includeConditional?`、`resetState?`）。免审批直接执行；需审批返回 `202 { proposalId, status: "pending_approval" }` |
 | `POST /v1/accounts/:accountId/manual-order` | 受控单次手动下单（支持普通单与 Algo 条件单，传 `action`、`symbol?`、`params`、`reason`）。走同一风控与减仓绿灯；账户开启 `requireApprovalOnManualTrade` 时返回 `202 { proposalId }`，否则直接执行，不抢占策略租约 |
 | `DELETE /v1/accounts/:accountId/manual-order` | 受控单次手动撤单（按 `orderId`/`algoId`/`clientOrderId`），可按配置免审批或走提案 |
@@ -385,8 +385,8 @@ quant-harness/
 | `POST /v1/trade/leverage` | `live`, `shadow` | 调整指定 `symbol` 杠杆（校验 `allowedSymbols` 且 `<= risk.maxLeverage`） |
 | `GET /v1/trade/open-orders?symbol=&includeConditional=` | `live`, `shadow` | 合并返回当前活跃普通挂单与（默认包含的）Algo 条件单 |
 | `GET /v1/state` | 全部托管 | 读取当前命名空间最新 Checkpoint |
-| `PUT /v1/state` | 全部托管 | 写入当前命名空间 Checkpoint（上限 **1 MB**）；交接期间仅接受本次 `handoverId` 的终态提交 |
-| `GET /v1/handover` | 全部托管 | 查询本运行待处理交接 `handoverId` |
+| `PUT /v1/state` | 全部托管 | 写入当前命名空间 Checkpoint（上限 **1 MB**）。交接期间仅接受本次 `handoverId` 的终态 Checkpoint |
+| `GET /v1/handover` | 全部托管 | 查询本运行待处理交接的 `handoverId` 和动作（`stop` 或 `replace`） |
 | `POST /v1/data/publish` | 声明 `publishDatasets` 的托管脚本 | 发布本运行独占声明的任意 `dataset` 样本（单条 ≤ 64 KB，单运行限频 50 条/秒），`core` 补 `ingestedTs` 后广播 |
 | `POST /v1/notify` | 具有 `notify` 能力的托管脚本 | 校验权限与每运行限流（默认每分钟 10 条），将 `sys.notify` 写入主事件总线立即返回 `202 { queued: true, seq }`，零阻塞 `core` |
 | `POST /v1/agents/tasks` | 具有 `agentTask` 能力的托管脚本 | 预分配 `taskId`，持久记录来源及 `agent.request`（支持可选 `cooldownSec` / `title` / `backend` / `visibility`）后返回 `202 { taskId }` |
@@ -406,7 +406,7 @@ quant-harness/
 | `GET /v1/data/datasets` | 列出所有外部采集数据集、最新写入时间、样本数与 TTL 状态 |
 | `GET /v1/data/query?dataset=&start=&end=&limit=&asOf=&asOfSeq=` | 按业务时间选样本；回测按接收时间与序号防未来函数；预热同事务返回 `{ items, maxSeq }` |
 | `GET /v1/ledger/query?accountId=&mode=&symbol=&type=&start=&end=&limit=&after_seq=&through_seq=` | 查询普通单、条件单、成交、Shadow 与风控拒单记录 |
-| `GET /v1/ledger/pnl?target=&window=&symbol=` | 返回预聚合绩效摘要（净收益、胜率、盈亏比、最大回撤、手续费、资金费率） |
+| `GET /v1/ledger/pnl?target=&window=&symbol=&mode=` | 按 `live`、`shadow` 分别统计净收益、胜率、盈亏比、最大回撤、手续费与资金费率，可指定其中一种模式 |
 | `GET /v1/checkpoints?namespace=&version=&limit=` | 查询 Checkpoint 历史版本 |
 | `POST /v1/logs/append` | 接收 `quant-core` 转发的托管脚本 `stdout/stderr` 并写入滚动日志 |
 | `GET /v1/logs/:runId?tail=&since=&grep=` | 查询托管脚本滚动日志 |
@@ -439,10 +439,10 @@ quant-harness/
 
 严格遵循 Binance USDⓈ-M 2026 路由拆分（高并发盘口/深度走 `/public`，常规行情走 `/market`，私有回报走 `/private`），按流量特征分为两层以保护 `quant-core` 稳定与 SQLite 吞吐：[Binance 路由说明](https://developers.binance.com/en/docs/products/derivatives-trading-usds-futures/websocket-market-streams/Important-WebSocket-Change-Notice) · [Demo 地址](https://developers.binance.com/en/docs/products/derivatives-trading-usds-futures/general-info)
 
-1. **基础常驻流（`public-ws.ts`，按 `config.symbols` 自动常驻，进主总线分配 `seq`，由 `quant-storage` 落盘）**：
+1. **基础常驻流（`public-ws.ts`）**按 `config.symbols` 订阅。网关按连接标记行情来源。研究、回测和价格监听订阅主网数据。联调需要时，Shadow 会话可读取内存中的测试网行情，例如核对测试单的触发价。
    - `/public` 组合流：`{symbol}@bookTicker`（最优买卖盘口与数量）；
    - `/market` 组合流：`{symbol}@kline_1m`（实时与闭合 `1m` K 线）、`{symbol}@markPrice@1s`（标记价、指数价、资金费率、下次结算时间）、`{symbol}@forceOrder`（强平/爆仓单推送）、`!contractInfo`（全局合约规则/保证金阶梯变更通知，收到变更自动触发 `exchangeInfo` 缓存刷新）；
-   - **按标的多周期 K 线内存聚合**：维护 `Map<symbol, KlineAggregator>`，基于闭合 `1m` K 线滚动聚合 `5m / 15m / 1h / 4h / 1d`（UTC 对齐）；启动、重连或热重载新增标的时，先经公共 REST 拉取各周期当前未闭合窗口内的 `1m` K 线回填聚合器；
+   - **多周期 K 线内存聚合**。按环境和标的分别用闭合的 `1m` K 线聚合 `5m / 15m / 1h / 4h / 1d`（UTC 对齐）。主网启动、重连或新增标的时，从主网 REST 补当前未闭合窗口。若 Shadow 联调需要测试网预热，只将当前窗口补入其内存聚合器。
    - 按 `(env, symbol, topic)` 独立记录最后有效帧时间；任意连接按 1s、2s、5s、15s 退避重连；某标的缺少新鲜标记价时仅拦截该标的开仓（返回 `503 MARKET_STALE`），撤单与减仓保持可用。
 
 2. **高频与全市场按需动态流（`fast-stream.ts`，独立连接 + 引用计数 + 无 `seq` 有损旁路，默认不落盘）**：
@@ -467,7 +467,7 @@ quant-harness/
 
 #### (2) 官方 Market Data REST 统一代理与缓存（`market-rest.ts`）
 
-所有托管脚本、本地研究脚本（经 `local-ro`）与 `quant` CLI 查询 Binance 官方公共 REST 数据统一走 `quant-core` 代理，复用出口 IP 权重限频桶并叠加按接口分层的短 TTL 内存缓存（避免多脚本同时拉取打爆 IP 权重）：
+托管脚本、本地研究脚本（经 `local-ro`）与 `quant` CLI 通过 `quant-core` 代理查询 Binance 公共 REST 数据。代理复用出口 IP 限频桶，按上游环境、接口和请求参数缓存结果。各接口的缓存期限如下。
 
 | 分组 | 代理路径（`/v1/market/rest/...`） | 对应 Binance 官方接口 | 缓存 TTL |
 | :--- | :--- | :--- | :--- |
@@ -497,7 +497,7 @@ quant-harness/
 
 1. **账户独占租约（实盘与 Shadow 统一）**：
    - 每个实盘 `accountId` 同一时刻仅允许 1 个活跃 `live` 租约；已有租约时拒绝普通启动（`409 ACCOUNT_LOCKED`），仅允许通过 `replace` 递增 `epoch` 交接；
-   - `shadow` 启动时从 Shadow 池分配空闲账户，支持运行已封存 `strategyId` 或 `_drafts/` 草稿路径；退出即释放租约；
+   - `shadow` 启动时从 Shadow 池分配空闲账户，支持运行已封存 `strategyId` 或 `_drafts/` 草稿。停机时完成 §4.3 的订单对账后释放租约。
    - `live` / `shadow` 交易写入校验绑定账户、`runId`、`epoch` 与运行状态，过期返回 `409 STALE_EPOCH`。
 2. **受控单次手动交易干预**：
    - 经 `admin.sock /v1/accounts/:accountId/manual-*` 提交，进入目标账户的**同一个串行风控与意图状态机入口**；
@@ -523,21 +523,25 @@ quant-harness/
    - 按角色附加 `QUANT_ACCOUNT` / `QUANT_EPOCH`（`live`、`shadow`）、`QUANT_CAPABILITIES`（JSON 序列化能力清单：`accountRead`、`publishDatasets`、`notify`、`agentTask`）、`QUANT_STATE_NAME`（常驻 `worker` 可选稳定状态名）；
    - 严禁向脚本注入交易所密钥、IM 凭据或 `admin.sock` 路径。
 2. **进程、日志与孤儿回收**：活跃运行 `runId`、`pid`、`mode`、`capabilities` 与 `startedAt` 持久记录在 `core.db`；管道收集 `stdout/stderr` 异步批量 POST 至 `storage.sock /v1/logs/append`；停止或交接发 `SIGTERM`，超时 `SIGKILL` 并撤销令牌；`core` 重启先扫描清理孤儿 PID 再执行自动恢复；SDK 在 `runtime.sock` 连续断连超 60 秒主动退出自保。
-3. **提案状态机**：覆盖 4 类动作——`live_start`、`live_replace`、`live_stop`、`manual_trade`。按子账户对应的 `requireApproval` / `requireApprovalOnStop` / `requireApprovalOnManualTrade` 决定免审批直行或落盘 `pending` 提案（15 分钟过期，绑定完整参数与 `proposalDigest`）。MCP、`quant` CLI、notifier 均可确认或驳回，原子消费并审计实际执行来源与确认引用。
+3. **提案状态机**覆盖 `live_start`、`live_replace`、`live_stop`、`manual_trade`。账户配置决定直接执行或登记 `pending` 提案（15 分钟过期，绑定完整参数与 `proposalDigest`）。可信 Agent 可通过 MCP 或 `quant` CLI 确认或驳回提案，包括自己提交的提案。交易员也可通过通知卡片确认。core 原子消费提案，记录实际操作者和来源，有人工确认记录时可附 `confirmationRef`。
 4. **`replace` 与 `stop` 五阶段交接**：
    1. **冻结**：绑定旧 `run/epoch`，置 `handover` 关闭旧运行交易与普通状态写权；
-   2. **交接终态**：定向发 `sys.handover` + `SIGTERM`，旧运行 3,000 ms 内凭 `handoverId` 提交一次终态 Checkpoint；
+   2. core 发送带动作及 `handoverId` 的 `sys.handover` 和 `SIGTERM`。热替换调用 `onHandover`。停策略时优先调用可选的 `onStop`，未注册时沿用 `onHandover` 保存终态。SDK 对同一次交接只调用一个回调，收尾限时 3 秒。
    3. **收敛在途订单**：确认旧运行退出、作废未发送意图，等已送出的普通单与条件单请求取得确定结果（`unknown` 阻止放行并告警）；
-   4. **处置普通挂单与条件单**：`cancel_open` 或 `stop(cancelOpenOrders=true)` 撤清普通挂单；仅当 `includeConditional=true` 时同步撤清 Algo 条件单（默认保留保护性条件止损单，便于 `v2` 或人工接管）；`adopt` 全量保留交接。`stop` 释放租约，若仍有持仓必发含双腿与保护性条件单摘要的高优告警；
+   4. **处置挂单**。
+      - **默认撤掉本策略创建或接管的挂单**，包括普通单和条件单。只保留保护同一标的、同一方向现有仓位的止盈止损，例如追踪止损和下单意图标为止盈的平仓限价单。开仓条件单、对应仓位已清零的保护单都要撤。手动单和外部订单留给原操作者管理。
+      - **策略可用 `harness.onStop` 自定义收尾**，保存状态并指定自己哪些订单要撤、哪些要留。未点名的订单按默认规则处理。未定义回调，或脚本退出、报错、超时而未提交决定时，core 执行默认规则。
+      - **core 负责执行撤单和对账**，按 `handoverId` 记录脚本交回的决定或采用的默认规则。遇到部分成交、条件单触发或重启，继续核对实际仓位、挂单及触发产生的子订单。确认完成才释放租约，有剩余仓位或挂单时发送高优通知。
+      - **热替换**。`adopt` 把原策略管理的挂单交给新运行。`cancel_open` 撤普通挂单，`includeConditional` 决定是否同步撤条件单。交接后继续由策略管理的挂单登记到新运行，保留原下单归属。
    5. **启动新版**：`replace` 同事务写入新 `epoch`、目标哈希、`starting` 及可选空 Checkpoint，`Bun.spawn` 启动新版并完成 SDK 握手激活。
-5. **`core` 恢复**：`state/core.db` 由单写 Worker 管理（SQLite WAL，`synchronous=FULL`）。启动先清孤儿 PID、恢复控制状态与订阅，按 `allowedSymbols` 核对各账户持仓、普通挂单与 Algo 条件单；续行未完成交接；恢复活跃 `live` 与标记 `persistent: true` 的 `worker`；其余一次性 `worker` 与 `shadow` 标为 `interrupted`。
+5. **`core` 恢复**。`state/core.db` 由单写 Worker 管理（SQLite WAL，`synchronous=FULL`）。启动先清孤儿 PID，恢复控制状态与订阅，按 `allowedSymbols` 核对各账户持仓、普通挂单与 Algo 条件单。优先续办未完成的交接，再恢复活跃 `live` 和标记 `persistent: true` 的 `worker`。其余一次性 `worker` 与 `shadow` 标为 `interrupted`，中断的 Shadow 账户按停机规则收尾后回池。
 
 **`core.db` 持久键**：
 
 | 记录 | 主键与恢复所需字段 |
 | :--- | :--- |
 | `sequence_state`、`critical_events`、`consumer_ack` | 单例 `reserved_until`；按 `seq` 的事件信封；按持久消费者的 `through_seq` |
-| `leases`、`proposals` | `(mode, accountId)` 对应 `runId`/`epoch`、目标（`strategyId` 或 `draftPath`）、`codeHash`、操作 ID 与阶段；提案按 `proposalId` 存动作类型（含 `manual_trade`）、摘要、参数、到期时间与结果 |
+| `leases`、`proposals` | `(mode, accountId)` 对应 `runId`/`epoch`、目标（`strategyId` 或 `draftPath`）、`codeHash`、从上一运行接管的活动订单、操作 ID、阶段及已采纳的停机决定。提案按 `proposalId` 存动作类型、摘要、参数、到期时间与结果 |
 | `order_intents` | `(mode, accountId, symbol, clientOrderId)` 唯一，存 `order_kind`（`STANDARD` \| `CONDITIONAL`）、`source`（`strategy` \| `manual`）、交易所号（`exchange_client_id` 唯一）、规范化请求、原 `run/epoch`、状态与已知 `exchange_order_id` / `algo_id` |
 | `reconciliation_cursors` | 按环境、账户、交易对和历史接口记录已处理窗口、分页边界与业务 ID |
 | `kill_switches`、`checkpoint_latest` | 按作用范围存熔断状态；按命名空间存完整 Checkpoint（≤ 1 MB）、终态 `handoverId` 和版本 |
@@ -555,7 +559,7 @@ quant-harness/
 export type WorkingType = "MARK_PRICE" | "CONTRACT_PRICE";
 
 export type OrderParams = {
-  symbol?: string;                  // 省略时默认 config.defaultSymbol（BTCUSDT）
+  symbol?: string;                  // 省略时取 config.defaultSymbol
   qty: number;                      // 合约数量，有限正数
   clientOrderId: string;            // 稳定业务意图键，1–16 位 [A-Za-z0-9_-]
 } & (
@@ -725,7 +729,9 @@ export declare const harness: {
 };
 ```
 
-- **续传、断连自保与交接**：主事件流按 `afterSeq` 重连补齐；高频旁路断连后自动重发当前订阅流（不补缺口）；托管模式下 `runtime.sock` 连续断连超 60 秒主动退出自保；`onHandover` 保证同一 `handoverId` 仅调度一次。
+策略还可注册 `harness.onStop`，按 §4.3 指定停机时要保留或撤销的自有订单。回调参数和结果的传递方式在实现时确定。
+
+- **续传、断连自保与交接**。主事件流按 `afterSeq` 重连补齐，高频旁路重发当前订阅。托管模式下 `runtime.sock` 连续断连超 60 秒时脚本主动退出。SDK 按 §4.3 分派交接事件，先收到 `SIGTERM` 时从 `GET /v1/handover` 取得动作与交接 ID。
 
 ### 5.2 双模式离线研究与回测体系
 
@@ -749,6 +755,8 @@ export declare const harness: {
    - `worker`：禁止引用 `trade.*` 写方法（允许 `accounts.*` 只读观测、全量 `market.*`、`notify.send`、`agents.*`）；若未声明 `publishDatasets`，引用 `data.publish` 报错；若声明了 `publishDatasets` 但未调用 `data.publish` 给出警告；
    - `live` / `shadow`：必须存在 `harness.onHandover(...)` 注册调用；使用 `Date.now()` 时给出回测不安全警告（推荐 `harness.now()`）；调用 `market.watchFast()` 时提示该流不参与离线回测。
 
+策略编写提示词应让 Agent 明确采用默认停机行为，或编写 `onStop` 说明特殊处理。沿用现有 AST 预检，例如缺少回调时提示将按归属撤单，有回调时检查是否误用了全账户撤单。具体提示词与检查项留到实现阶段。
+
 ---
 
 ## 6. 四个外围常驻进程详细设计
@@ -758,6 +766,8 @@ export declare const harness: {
 `ledger.db` 与 `timeseries.db` 分别使用独立 SQLite 连接、WAL、`synchronous=FULL`、`busy_timeout=5000` 和外键检查，由 `quant-storage` 独占写权；文件权限设为同组可读，明确支持 Agent 与 `scripts/research/` 本地脚本以 `new Database(path, { readonly: true })` + `PRAGMA query_only = ON` 并发只读直查。
 
 #### (1) `ledger.db` 核心表结构
+
+实盘账户事件记为 `mode = 'live'`，测试账户事件记为 `mode = 'shadow'`。实时收到和断线补回的委托、成交、仓位快照与资金流水均沿用账户所属模式。
 
 ```sql
 CREATE TABLE sync_cursor (
@@ -868,6 +878,7 @@ CREATE TABLE operation_audit (
 CREATE TABLE risk_rejects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   seq INTEGER NOT NULL UNIQUE,
+  mode TEXT NOT NULL,            -- live | shadow
   account_id TEXT NOT NULL,
   source TEXT NOT NULL DEFAULT 'strategy',
   run_id TEXT,
@@ -880,6 +891,7 @@ CREATE TABLE risk_rejects (
 CREATE TABLE account_snapshots (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   seq INTEGER NOT NULL UNIQUE,
+  mode TEXT NOT NULL,            -- live | shadow
   account_id TEXT NOT NULL,
   wallet_balance REAL NOT NULL,
   available_balance REAL NOT NULL,
@@ -953,6 +965,8 @@ CREATE TABLE backtest_runs (
 ```
 
 #### (2) `timeseries.db` 核心表结构
+
+交易所历史行情表（`klines`、`market_metrics`、`funding_rates`、`liquidations`）只接收主网行情。实时写入按事件来源筛选，历史缺口只从 `binance.mainnetRest` 回补。测试网行情留在内存，存储消费游标照常推进。外部采集样本按各自的 `dataset` 保存。
 
 ```sql
 CREATE TABLE sync_cursor (
@@ -1080,7 +1094,7 @@ export interface AgentHarnessAdapter {
 - **四项轻量护栏（`guardrails.ts`）**：
   1. **去重与灵活冷却**：沿用 `core` 预分配 `taskId`，按 `(source_scope, dedupKey)` 在冷却窗口（默认 300 秒，支持脚本按请求传入 `cooldownSec` 覆盖）内合并重复请求并登记别名；
   2. **并行与预算保护（无全局代码仓库单写锁）**：允许最多 `maxConcurrentTasks`（默认 4）个任务并行执行，不以全局写锁互相阻塞；按 UTC 日任务数（默认 200）与日费用预算（默认 50 USD）做软告警 + 硬上限保护；单任务轮数与超时上限充裕（`user`: 80 轮 / 30m、`cron_review`: 40 轮 / 20m、`script_triggered`: 30 轮 / 15m）；
-  3. **Profile 提示词**：区分 `user`、`cron_review`、`script_triggered` 默认职责，遇需确认的实盘变更先汇报询问；
+  3. **Profile 提示词**区分 `user`、`cron_review`、`script_triggered` 的默认职责，Agent 按交易员的授权处理实盘变更。
   4. **防失控反递归（`maxDepth = 3`）**：根据父任务链计算深度，允许脚本触发的深度研究任务按需再派发专项排查，同时阻断无限自激循环。
 
 ### 6.4 `quant-watchdog`（独立外部看门狗）
@@ -1101,7 +1115,7 @@ export interface AgentHarnessAdapter {
 | 分类 | 工具（11） | 底层路由 | 核心语义 |
 | :--- | :--- | :--- | :--- |
 | 实盘与手动交易（3） | `live_propose`、`trade_manual`、`proposals_decide` | `admin.sock` | 实盘上线/热替换提案；受控单次手动下单/挂条件单/撤单/调杠杆；批准或驳回提案 |
-| 托管运行（2） | `runs_start`、`runs_stop` | `admin.sock` | 启动 `worker`（声明能力组合）或 `shadow`（草稿或 `strategyId`）；停止运行（含 `includeConditional`） |
+| 托管运行（2） | `runs_start`、`runs_stop` | `admin.sock` | 启动 `worker`（声明能力组合）或 `shadow`（草稿或 `strategyId`）。停止指定运行时，策略按 §4.3 收尾 |
 | 策略封存与回测（3） | `strategies_seal`、`strategies_tag`、`backtest_run` | `storage.sock` | 预检打包封存只读不可变版本；更新五维标签/笔记/生命周期；标准同码事件回放精测 |
 | 风控、Agent 与通知（3） | `risk_kill_switch`、`agents_start_task`、`notify_send` | `admin.sock` / `agent.sock` / `notifier.sock` | 开关 Kill Switch；发起异步 Agent 任务；向飞书/Telegram 推送摘要告警 |
 
@@ -1131,8 +1145,8 @@ quant data query <dataset> [--start ...] [--end ...] [--limit 100]
 # 3. 账户、账本与状态
 quant accounts list
 quant accounts state <accountId>
-quant ledger query [--account ...] [--symbol ...] [--limit 50]
-quant ledger pnl <target> [--window 7d]
+quant ledger query [--account ...] [--mode live|shadow] [--symbol ...] [--limit 50]
+quant ledger pnl <target> [--mode live|shadow] [--window 7d]
 quant state inspect <namespace> [--version N]
 
 # 4. 策略库、预检与标准回测
@@ -1149,7 +1163,7 @@ quant run list [--mode ...] [--status ...]
 quant run logs <runId> [--tail 200] [--grep "..."]
 quant run start worker <path> [--persistent] [--state-name ...] [--account-read sub_main] [--publish-datasets ds1,ds2]
 quant run start shadow <strategyId|draftPath>
-quant run stop <runId> [--cancel-open] [--include-conditional]
+quant run stop <runId> [--reason "..."]
 quant live propose <strategyId> --account <accountId> --handover <adopt|cancel_open> [--include-conditional] --reason "..."
 quant trade order <accountId> <openLong|closeLong|openShort|closeShort> --symbol BTCUSDT --type <MARKET|LIMIT|STOP_MARKET|...> --qty ... [--price ...] [--trigger-price ...] --reason "..."
 quant trade cancel <accountId> (--order-id ... | --algo-id ... | --client-order-id ...)
@@ -1174,8 +1188,8 @@ quant notify send --level info --title "..." --body "..."
 
 | 阶段 | 交付模块 | 验收标准（基础设施单测 / 真实联调） |
 | :--- | :--- | :--- |
-| **P1** | `quant-storage` 双库（含 `algo_orders`、`funding_rates`、`liquidations`）、WAL 只读直查、策略库、预检与打包 | 验证两库交错提交中断后从较小游标恢复且无重复；验证 `storage` 写入期间外部 `readonly` WAL 连接并发 SQL 查询不阻塞；验证 `prepare`（`shadow` 草稿 / `worker` 不入不可变表）与 `seal`（并发封存不覆盖、SDK 版本变化隔离） |
-| **P2** | `quant-core` 主事件总线、订单意图（普通单 + 条件单）、风控（含受控手动交易）、1 MB Checkpoint 与能力调度 | 验证 `storage` 离线越块重启恢复；验证 `worker` 能力组合（`accountRead` 只读放行、`trade.*` 403、多 `dataset` 独占发布、`notify.send` 入总线 `sys.notify`）；验证受控手动交易过风控/审批且不抢占策略租约；验证 `replace`/`stop` 的 `includeConditional` 策略与双信号单次终态提交 |
+| **P1** | `quant-storage` 双库（含 `algo_orders`、`funding_rates`、`liquidations`）、WAL 只读直查、策略库、预检与打包 | 验证双库交错提交中断后从较小游标恢复且无重复，写入期间 WAL 并发只读查询不阻塞。验证 `prepare`（Shadow 草稿和 worker 不入不可变表）与 `seal`（并发封存不覆盖、SDK 版本变化隔离）。两网同一时刻对同一标的报价不同时，历史查询只返回主网值，测试成交仍可按 `shadow` 查到 |
+| **P2** | `quant-core` 主事件总线、订单意图（普通单 + 条件单）、风控（含受控手动交易）、1 MB Checkpoint 与能力调度 | 验证 `storage` 离线越块重启恢复。覆盖 worker 的 `accountRead` 只读放行、`trade.*` 403、多数据集独占发布和 `sys.notify`。验证手动交易经过风控与审批且不抢占租约。验证热替换的 `includeConditional` 与双信号单次终态提交。停机覆盖默认撤单、自定义 `onStop` 和异常回退，分别核对现有仓位保护单、已空仓保护单及手动单 |
 | **P3** | Binance 多标的网关、全量 WS（基础流 + 按需高频旁路）、官方 Market Data REST 缓存代理、Algo 条件单与双模式回测 | 验证热重载动态增减 `symbols` 与 `allowedSymbols`；验证高频 `depth`/`aggTrade` 零订阅时退订、高压下丢旧帧不挤占主环形缓冲；验证全部公共 REST 代理走统一权重桶且不饿死撤单；使用 Demo 账户实测普通单 + Algo 条件单（`/fapi/v1/algoOrder` + `ALGO_UPDATE`）全流程、断线补账与杠杆收紧后保护止损绿灯；验证标准回测的条件单撮合与防未来函数 |
 | **P4** | 飞书/Telegram 通知审批 Webhook、`quant` 统一 CLI 及审计 | 覆盖 Webhook 验签/白名单/去重；验证脚本 `sys.notify` 经 `notifier` 冷却降噪送达；覆盖实盘与手动交易提案的 notifier / CLI / MCP 审批互斥、审计来源记录、停机持仓/条件单告警及 Kill Switch（含 `includeConditional`） |
 | **P5** | 精简 11 核心 MCP、两个 Agent 后端、Cron 复盘与宽松护栏 | 验证精简 11 核心 MCP 与 `quant` CLI 契约一致；验证无全局写锁并发执行、自定义 `cooldownSec` 去重别名、预算软/硬限制与 `maxDepth=3` 反递归；实测 Codex 与 Antigravity 侧边栏 `visible / hidden / ephemeral` 及重启后续聊 |

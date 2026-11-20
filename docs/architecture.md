@@ -7,7 +7,7 @@
 ## 1. 系统边界
 
 - **运行环境**：单机部署，全栈纯 Bun + TypeScript，由 `systemd` 同级托管 5 个常驻进程（1 核 + 4 外围），无 Redis、消息队列或容器编排。
-- **交易与行情标的**：**Binance USDⓈ-M 永续合约**，默认主标的 `BTCUSDT`，配置支持多标的列表（`symbols` 行情观测标的与账户级 `allowedSymbols` 交易标的分离）；完整对齐 Binance 官方 USDⓈ-M WebSocket 行情流与 Market Data REST 接口；跨所或现货等站外数据由采集脚本发布进入数据集。
+- **交易与行情标的**。对接 **Binance USDⓈ-M 永续合约**的 WebSocket 行情流与 Market Data REST 接口。配置分别指定默认标的、行情观测列表和账户交易标的。跨所或现货等站外数据由采集脚本发布进入数据集。
 - **账户与持仓模型**：
   - 多子账户隔离，**单子账户同一时间至多运行 1 个实盘策略（1:1 独占）**；交易所子账户余额、持仓与挂单（含条件单）即唯一账本。
   - 所有实盘子账户在代码层完全同构，仅通过每账户独立配置（`allowedSymbols`、`requireApproval`、`requireApprovalOnStop`、`requireApprovalOnManualTrade`、风控阈值、`labels`）区分小资金灰度账户与主力账户。
@@ -33,7 +33,7 @@
 | **`quant-agent`** | 外围常驻进程 | 复用 Codex / Antigravity 等 Agent Harness、暴露 `agent.sock` 任务接口、远端侧边栏可见性控制、定时全局复盘、承接脚本发起的异步任务（宽松预算型护栏） | 重启或 LLM 慢响应不影响 `quant-core` 与告警通道 |
 | **`quant-watchdog`** | 外围常驻进程 | 外部探活 `quant-core` 与外围进程、多标的行情新鲜度监控、独立直连兜底告警、可选极端失联应急撤单（支持保留保护性止损条件单） | 独立于 `quant-core` 之外，持独立告警通道 |
 | **托管 Bun 脚本进程** | 隔离工作进程 | 运行实盘策略（`live`）、测试网策略（`shadow`）、按需组合能力的常驻监控/采集脚本（`worker`） | 进程级隔离，单脚本崩溃或阻塞不影响主进程及其他脚本 |
-| **本地研究脚本** | 非托管短任务 | Agent 终端直接 `bun run` 的一次性分析、探索、向量化快测与参数扫描脚本 | 纯只读访问本地库/快照，无交易写权与密钥接触 |
+| **本地研究脚本** | 非托管短任务 | Agent 终端直接 `bun run` 的一次性分析、探索、向量化快测与参数扫描脚本 | 通过只读接口访问行情快照和本地账本 |
 
 本机进程间通信统一采用 **Unix Domain Socket（UDS）上的 HTTP/1.1 + JSON 与 NDJSON 持续流**。
 
@@ -70,7 +70,7 @@
 | **`quant-core` → 脚本（可靠主事件流）** | UDS 长连接 HTTP + NDJSON（`GET /v1/stream?topics=...&after_seq=...`） | 基础行情（K 线/盘口/标记价/强平/合约变更）、外部数据集、私有成交与账户回报、`sys.handover`；SDK 封装为 `for await`，断线按 `after_seq` 自动续传 |
 | **`quant-core` → 脚本（高频行情旁路）** | UDS 长连接 HTTP + NDJSON（`GET /v1/market/fast-stream?streams=...`） | 按需订阅的深度（`depth`/`depth_diff`/`rpi_depth`）、归集成交（`agg_trade`）、24h Ticker、连续 K 线、全市场推送等高频行情；无 `seq`、慢消费 `drop_oldest`，绝不阻塞主事件总线 |
 | **脚本 → `quant-storage` / SQLite** | UDS HTTP + JSON（托管脚本）；本地 WAL 只读直连（`local` 研究脚本） | 历史 K 线、资金费率、强平记录、外部数据集与日志查询；本地一次性研究脚本可直接 `new Database(path, { readonly: true })` 执行任意 SQL 与向量化计算 |
-| **托管脚本 ↔ `quant-core`（OS）** | `stdout/stderr` 管道 + `SIGTERM` | 自动收集输出写入滚动日志；`stop/replace` 时下发 `sys.handover` + `SIGTERM`，经 `harness.onHandover(cb)` 在 3 秒内提交终态退出，超时 `SIGKILL` |
+| **托管脚本 ↔ `quant-core`（OS）** | `stdout/stderr` 管道 + `SIGTERM` | 输出写入滚动日志。收到 `sys.handover` 或终止信号时，SDK 按动作调用策略的 `onStop` 或 `onHandover`，收尾期限为 3 秒，超时由 core 接手 |
 
 #### 托管模式与可组合能力矩阵
 
@@ -119,7 +119,7 @@ agents.startTask({ dedupKey, prompt, title?, backend?, visibility?, cooldownSec?
 ### 3.3 交易所网关、全量行情分层与多子账户池
 
 1. **Binance USDⓈ-M 全量公共行情分层（遵守 Binance 2026 `/public` 与 `/market` 分路）**：
-   - **第一层 · 基础常驻流（默认按 `symbols` 订阅，进主事件总线分配 `seq`，由 `quant-storage` 落盘）**：
+   - **第一层 · 基础常驻流**按 `symbols` 订阅，进入主事件总线分配 `seq`。历史行情只归档主网数据。
      - `/public`：`{symbol}@bookTicker`（最优买卖盘口）；
      - `/market`：`{symbol}@kline_1m`（实时与闭合 `1m` K 线，并按标的在内存滚动聚合 `5m / 15m / 1h / 4h / 1d` 闭合 K 线）、`{symbol}@markPrice@1s`（标记价、指数价与资金费率）、`{symbol}@forceOrder`（强平/爆仓单推送）、`!contractInfo`（合约规则/保证金阶梯变更通知，自动刷新 `exchangeInfo` 缓存）。
    - **第二层 · 按需高频动态流（零订阅时不连流，有订阅时动态 `SUBSCRIBE`，走独立无 `seq` 有损旁路，默认不落盘）**：
@@ -133,7 +133,7 @@ agents.startTask({ dedupKey, prompt, title?, backend?, visibility?, cooldownSec?
    - 普通单（`MARKET` / `LIMIT`）走 `/fapi/v1/order`，原生条件单（`STOP_MARKET` / `TAKE_PROFIT_MARKET` / `STOP` / `TAKE_PROFIT` / `TRAILING_STOP_MARKET`）直连 Binance 新版 **Algo Order Service**（`/fapi/v1/algoOrder`、`/fapi/v1/algoOpenOrders`、`/fapi/v1/openAlgoOrders`）；
    - 私有 User Data Stream 同时监听 `ORDER_TRADE_UPDATE`、`ACCOUNT_UPDATE` 与 **`ALGO_UPDATE`**，断线对账同步拉取普通挂单与活跃条件单；
    - 启动按 `allowedSymbols` 自动校验 Hedge Mode、保证金模式与初始杠杆，所有 REST 请求共享统一出口 IP 权重限频桶。
-3. **Shadow 测试通道**：承接 `shadow` 交易请求，直连 Binance Demo / Testnet API（同样支持普通单与 Algo 条件单），与实盘凭证完全隔离。
+3. **Shadow 测试通道**使用独立的 Demo/Testnet 账户凭据验证下单、条件单、撤单和成交回报。核对测试单触发价或预热时，按需读取测试网行情并在内存中使用。研究、回测与价格监听使用主网行情。
 
 ### 3.4 账户独占锁、防呆风控与托管 Checkpoint
 
@@ -161,8 +161,8 @@ agents.startTask({ dedupKey, prompt, title?, backend?, visibility?, cooldownSec?
 
 - 持持久化游标 `last_seq` 订阅 `quant-core` 主事件流批量落盘，重启从 `last_seq` 追平。
 - **物理存储分层**：
-  1. `ledger.db`（SQLite WAL）：委托/条件单/成交、账户收入与资金费、账户快照、Shadow 记录、运维审计、Checkpoint 历史版本、策略资产元数据与标签索引；
-  2. `timeseries.db`（SQLite WAL）：多标的 K 线、分钟级市场指标、强平记录（`liquidations`）、历史资金费率（`funding_rates`）与外部采集因子数据集（`data_samples`）；
+  1. `ledger.db`（SQLite WAL）按 `mode` 区分实盘（`live`）和测试网（`shadow`）的委托、条件单、成交、账户快照与资金流水，另存运维审计、Checkpoint 历史版本和策略资产索引。
+  2. `timeseries.db`（SQLite WAL）的交易所行情表只存主网 K 线、分钟级指标、强平记录及历史资金费率。外部采集因子存入 `data_samples`。
   3. `strategies/` 与 `artifacts/`：策略草稿区、只读不可变策略源码及打包产物目录；
   4. `logs/<role>/<name>/<run_id>.log`：按大小/日期滚动压缩的文本日志。
 - **WAL 只读直查与双模式回测**：
@@ -254,7 +254,7 @@ scripts/
 | `trade_manual` | `admin.sock` | 受控单次手动交易（开平仓/挂条件止损止盈/撤单/全撤/调杠杆），统一过风控、账户审批门与审计，不抢占策略租约 |
 | `proposals_decide` | `admin.sock` | 批准或驳回待确认提案（实盘上线、替换、停机或需审批的手动交易），记录实际执行来源 |
 | `runs_start` | `admin.sock` | 启动托管 `worker`（自由组合能力标签）或 `shadow`（支持 `_drafts/` 草稿或已封存 `strategyId`） |
-| `runs_stop` | `admin.sock` | 优雅停止托管脚本并回收终态 Checkpoint（支持 `cancelOpenOrders` 与 `includeConditional`） |
+| `runs_stop` | `admin.sock` | 停止指定运行并回收终态 Checkpoint。策略的挂单按 §7.1 的默认规则和可选 `onStop` 处理 |
 | `strategies_seal` | `storage.sock` | 静态预检、打包并封存草稿为只读不可变版本 `strategies/<family>/<version>.ts` |
 | `strategies_tag` | `storage.sock` | 更新五维标签、追加归因备注或切换 `lifecycle`（`shelved` / `deprecated` 等） |
 | `backtest_run` | `storage.sock` | 对草稿路径或已封存 `strategyId` 执行防未来函数标准同码事件回放精测 |
@@ -273,15 +273,15 @@ scripts/
 
 ### 6.4 真正的硬边界（保留少而硬的底线）
 
-- 交易所 API 密钥仅驻留 `0600` 保护配置中，仅 `quant-core`（及开启应急撤单时的 `quant-watchdog`）可读，绝不暴露给任何脚本或 Agent；API Key 禁用提币与资金划转；
+- 交易凭据按 §8 的可信单机约定使用。人工与已接入的 Agent 均可按账户配置批准或驳回提案，审计记录实际执行者。
 - 禁止原地修改或删除已封存的不可变策略文件（须经 `fork` 衍生新版本）；
-- 所有实盘交易（含托管策略与受控单次手动交易）必须经过 `quant-core` 防呆风控、账户审批门与审计日志，不存在绕开网关的直连下单通路。
+- 实盘策略与受控单次手动交易统一经 `quant-core` 执行风控、账户审批和审计。
 
 ---
 
 ## 7. 关键运行流程与故障恢复
 
-### 7.1 零中断热切换（`replace`）
+### 7.1 策略热切换与停机
 
 将子账户 `sub_a` 从 `v1`（`epoch = N`）切换至不可变 `strategyId` `v2`（`epoch = N+1`）：
 
@@ -289,6 +289,8 @@ scripts/
 2. **冻结与终态回收**：将 `sub_a` 置为 `handover` 立即拒绝 `v1` 新单；触发优雅终止信号等待 `v1` 提交终态 Checkpoint 并退出。
 3. **挂单与条件单处置**：按参数执行 `adopt`（保留原挂单与条件单由 `v2` 接管）或 `cancel_open`（先撤普通未成交挂单，并按 `includeConditional` 决定是否同步撤销 Algo 条件单，默认可保留保护性止损条件单）。
 4. **原子切换**：原子递增 `activeEpoch: N → N+1` 并启动 `v2`；`v2` 加载终态 Checkpoint（按 `schemaVersion` 迁移，或 `resetState` 清空）及子账户真实 `{ long, short }` 持仓、挂单与条件单。全程 `quant-core` 不重启。
+
+停止 `live` 或 `shadow` 策略时，默认撤掉它创建或随交接接管的全部挂单，只保留保护现有仓位的止盈止损。策略可以用 `harness.onStop` 保存终态、指定自己要保留或撤销的订单。core 负责执行和对账。脚本未定义回调、退出或超时且未交回有效结果时，core 执行默认规则。手动单和外部订单始终按各自归属处理。
 
 ### 7.2 外部数据采集与零缝隙订阅
 
@@ -312,5 +314,5 @@ scripts/
 ## 8. 安全约束
 
 - **交易所 API Key**：按子账户独立签发，仅开启合约交易权限，禁用提币与资金划转权限，绑定本机固定出口 IP。
-- **密钥隔离**：密钥存于 `0600` 权限受保护配置中，仅 `quant-core`（及开启应急撤单时的 `quant-watchdog`）可读，绝不传入任何脚本或 Agent 进程。
+- **凭据使用**。`0600` 按系统用户保护密钥文件。同一用户下的 Agent 与脚本属于可信环境。通常由 `quant-core` 读取凭据签名，启用应急撤单时 `quant-watchdog` 也读取相应凭据。脚本通过运行令牌调用网关。
 - **本机通信与产物权限**：各 `.sock` 文件通过文件系统权限隔离，托管运行时请求必须携带有效 `QUANT_TOKEN`；已封存策略文件以 `0444` 只读锁定并经 `code_hash` 校验；本地研究脚本与 Agent 对 `ledger.db` / `timeseries.db` 仅执行 WAL 只读查询，数据库写权限仍由对应守护进程独占。

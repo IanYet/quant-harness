@@ -2,14 +2,16 @@
 
 ## 项目愿景
 
-在一台带公网 IP 的独立服务器上运行个人 Agent 量化交易工具（面向 **Binance USDⓈ-M 永续合约**，默认 `BTCUSDT`，支持多标的观测与按账户配置交易标的）。
+在一台带公网 IP 的独立服务器上运行个人 Agent 量化交易工具，对接 **Binance USDⓈ-M 永续合约**，支持观测多个标的。
 
 平时主要通过 **Codex App / Antigravity App 的 SSH Connect** 打开远端项目、或 SSH 登录终端用 Codex CLI / Antigravity CLI 与 Agent 对话，由 Agent 负责数据研究、编写脚本、管理策略、必要时执行经授权的单次手动干预以及定期复盘；手机上的 **飞书 / Telegram** 仅用于接收交易告警、脚本自定义提醒、复盘摘要通知及高风险变更审批：
 
 - **自由研究 + 托管运行双轨驱动**：
   - **终端自由直跑**：一次性数据分析、统计归因、向量化快测与参数扫描，由 Agent 在终端直接 `bun run` 执行（纯 Bun + TS，支持直接只读查询本地 WAL SQLite 与行情快照），秒级迭代，不走异步托管流程。
-  - **常驻托管运行**：实盘策略、Demo/Testnet 联调策略、7×24 行情/账户监听与外部数据采集脚本由 `quant-core` 统一托管保活；支持按需组合行情、只读账户观测、多数据集发布、直接推送飞书/Telegram 告警及异步唤起 Agent 会话（默认在远端 App 侧边栏 `visible` 可见，并同步推送摘要通知）。
-- **确定性盘中执行 + 零中断迭代**：盘中高频/自动化策略执行由独立确定性 Bun 脚本完成（支持交易所原生条件止损/止盈单），每个子账户同一时间最多运行 1 个实盘策略（统一 Hedge Mode 双向持仓）；交易员也可在对话中授权 Agent 发起经风控与审批的单次手动交易干预（平仓、挂条件止损、撤单、调杠杆）；实盘策略支持先经本地快测/标准同码回测、Demo/Testnet 草稿直跑（`shadow`）与小资金子账户验证，在 `quant-core` 不重启的前提下热替换（`replace`）。
+  - **常驻托管运行**。实盘策略、Demo/Testnet 联调、行情与账户监听、外部数据采集都可以写成脚本，由 `quant-core` 持续运行。例如，监听脚本发现价格触及 60,000 USDT，就新开一个 Agent 会话研究这次行情。交易员可以从远端 App 侧边栏进入会话继续聊，也可以在飞书或 Telegram 收到摘要。
+- **一个子账户同时最多运行一个实盘策略**。策略是独立的 Bun 脚本，在 Hedge Mode 下交易，可先做本地快测、同码回测，再用 Demo/Testnet 或小资金子账户验证。换版时 `quant-core` 持续运行。交易员也可在对话中授权 Agent 经风控和审批执行单次平仓、挂保护单、撤单或调杠杆。
+- **停策略时默认按归属撤单**，只保留保护现有仓位的止盈止损。需要特殊处理时，策略可以在 `onStop` 中指定自己的哪些挂单要撤、哪些要留。
+- **行情与交易记录**。研究、回测和价格监听使用主网行情，历史行情库只存主网数据。测试网用于验证交易流程，测试账户的委托、成交和资金流水在账本中标记为 `shadow`。
 - **策略资产长期沉淀**：成熟策略经封存成为只读不可变脚本文件持久化保存，配合衍生谱系、五维标签与验证归因记录，方便未来行情回归时检索、复用与二次衍生。
 
 ---
@@ -18,16 +20,16 @@
 
 以下约束用于指导全部设计与编码，在守住实盘安全底线的前提下最大化 Agent 与脚本效率：
 
-1. **信任 Agent，守住少而硬的实盘底线**
-   - 本项目是个人单机工具，信任已接入的 Agent，**不做** OS 多用户隔离、`systemd DynamicUser` 脚本沙箱、挂载命名空间或重型防贼鉴权体系。
-   - 真正守死的硬底线仅三条：**交易所 API 密钥隔离**（仅驻留 `quant-core` 与可选应急 `quant-watchdog`，绝不暴露给脚本或 Agent，且禁用提币/划转）、**实盘交易风控与审批闸门**（所有策略与手动交易统一经 `quant-core` 风控/限频/审批/审计）、**已封存实盘版本不可原地篡改**（须 `fork` 衍生新版本）。
+1. **可信 Agent 与实盘运维**
+   - Agent 和脚本在个人服务器的可信用户下运行。交易凭据由 `quant-core` 用于签名，启用应急撤单时 `quant-watchdog` 也使用相应凭据。脚本环境只接收运行令牌。交易所密钥禁用提币和划转。
+   - 策略与手动交易统一经 `quant-core` 风控、限频和审计。按账户配置需要审批时，可信 Agent 和交易员都可以确认，系统记录实际操作者。修改已封存的实盘策略通过 `fork` 衍生新版本。
 2. **极简单机，全栈纯 Bun + TypeScript**
    - 全栈 **Bun + TypeScript**，无 Redis、消息队列、Docker、ORM、Web 框架或重型 Bot SDK。
    - 托管与封存脚本坚持**单文件 `.ts` + 仅运行时导入 `@quant/tools` + 静态预检与单文件打包**，保证策略自包含、易审阅、零依赖腐烂；一次性研究脚本亦采用纯 Bun + TS（可直接使用 Bun 原生能力与只读 `bun:sqlite`）。
    - 仅 5 个常驻服务由 `systemd` 托管；所有托管脚本由 `quant-core` / `quant-storage` 通过 **`Bun.spawn`** 直接拉起（PID 记入状态库用于重启清理孤儿进程）。
    - 存储使用 `bun:sqlite`（WAL 分库，天然支持并发只读直查），本机进程通信使用 UDS HTTP/JSON + NDJSON 流，飞书/Telegram 采用公网 HTTPS 反代下的纯 Webhook + 原生 `fetch()`。
 3. **直连 Binance USDⓈ-M 全量能力，拒绝过度抽象**
-   - 交易所直写 **Binance USDⓈ-M Futures**，不设计多交易所插件框架，但完整对齐 Binance 官方永续行情流（分 `/public` 与 `/market` 路由，基础流落盘 + 高频流按需无 `seq` 旁路）、官方 Market Data REST（经统一限频缓存代理）以及新版 Algo Order 原生条件单（`STOP_MARKET` / `TAKE_PROFIT_MARKET` / `STOP` / `TAKE_PROFIT` / `TRAILING_STOP_MARKET`）。
+   - 网关直连 **Binance USDⓈ-M Futures** 的官方永续行情流（`/public` 与 `/market`）。主网基础行情落盘，高频流按需订阅。网关也提供统一限频缓存的 Market Data REST 和 Algo Order 原生条件单（`STOP_MARKET` / `TAKE_PROFIT_MARKET` / `STOP` / `TAKE_PROFIT` / `TRAILING_STOP_MARKET`）。
    - 所有实盘子账户在代码层完全同构，仅靠每账户配置（`allowedSymbols`、`requireApproval`、`marginType`、风控阈值、`labels`）区分灰度账户与主力账户。
    - 仅在明确需要多后端的 **Agent Harness 适配层（Codex / Antigravity）** 保留最小接口抽象，统一控制远端 App 侧边栏可见性（`visible` / `hidden` / `ephemeral`）。
 4. **真实验证，不写模拟策略脚本**

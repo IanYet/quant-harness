@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1680" height="1180" viewBox="0 0 1680 1180" role="img" aria-labelledby="title description">
   <title id="title">量化交易 Harness 架构图</title>
-  <desc id="description">面向 Binance USDⓈ-M 永续合约（多标的、默认 BTCUSDT）的单机纯 Bun + TypeScript 量化架构，采用 1 个常驻稳核 quant-core 加 4 个外围独立常驻进程（quant-watchdog、quant-notifier、quant-agent、quant-storage）的解耦设计。交易员通过 Codex / Antigravity App（SSH Connect）或 CLI 与 AI Agent 对话，飞书与 Telegram 仅用于接收通知告警与完成审批；交互入口采用统一本机 CLI（quant）+ 精简 11 核心 MCP + 本地 WAL SQLite 只读直查协同。quant-core 完整接入 Binance USDⓈ-M 全量行情（基础流落盘 + 按需高频旁路 + 官方 Market Data REST 缓存代理）与 Algo 原生条件单，支持 1 账户 1 实盘策略与受控单次手动交易。脚本采用双轨执行：3 类托管角色（live 仅不可变 strategyId、shadow 支持草稿直跑、worker 按能力组合含只读账户观测/多数据集发布/直发通知）维持单文件预检打包，外加本地终端直接 bun run 的一次性研究脚本。</desc>
+  <desc id="description">面向 Binance USDⓈ-M 永续合约的单机 Bun + TypeScript 量化架构，支持多标的。quant-core 与 quant-watchdog、quant-notifier、quant-agent、quant-storage 五个服务常驻。交易员主要通过 Codex 或 Antigravity App 的 SSH Connect 与 Agent 对话，也可通过 SSH 使用 CLI。飞书与 Telegram 接收告警与审批。quant-core 直连行情和 Algo 条件单，提供高频订阅与 REST 缓存。历史行情只存主网数据，测试账户的交易记录标为 shadow。每个子账户最多运行一个实盘策略，也支持受控手动交易。托管脚本支持 live、shadow、worker 三类运行，本地研究脚本可从终端直接执行。</desc>
   <defs>
     <marker id="control" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" refX="8.6" refY="5" orient="auto">
       <path d="M0,1 L9,5 L0,9 Z" fill="#33597b"/>
@@ -133,7 +133,7 @@
     <rect x="612" y="446" width="320" height="22" rx="6" fill="#e3f3ef" stroke="#b3d7ce" stroke-width="1"/>
     <text x="772" y="461" text-anchor="middle" font-size="12.4" font-weight="700" fill="#086e66">runtime.sock · Token 能力鉴权 + 本地只读</text>
     <text x="496" y="490" text-anchor="start" font-size="13.5" font-weight="400" fill="#334f61">market.{watch,watchFast,REST} · accounts.* · trade.* (含条件单) · data.* · notify · state · agents</text>
-    <text x="496" y="512" text-anchor="start" font-size="13.2" font-weight="400" fill="#506878">托管脚本按能力组合与 Epoch 强校验；本地研究脚本开放公共行情只读（无密钥与写权）</text>
+    <text x="496" y="512" text-anchor="start" font-size="13.2" font-weight="400" fill="#506878">按能力和 Epoch 校验托管脚本请求，本地研究脚本使用只读行情接口</text>
 
     <!-- Lower Left: Exchange Gateway & Sub-Account Pool -->
     <rect x="66" y="566" width="380" height="110" rx="9" fill="#ffffff" stroke="#a3b9ae" stroke-width="1.4"/>
@@ -213,7 +213,7 @@
     <!-- Peripheral 4: quant-storage -->
     <rect x="1344" y="824" width="274" height="118" rx="10" fill="#ffffff" stroke="#b2abc7" stroke-width="1.5"/>
     <text x="1481" y="852" text-anchor="middle" font-size="16.5" font-weight="700" fill="#4b436e">quant-storage · 存储与策略库</text>
-    <text x="1481" y="878" text-anchor="middle" font-size="13" font-weight="400" fill="#334f61">按 seq 订阅主事件流批量落盘</text>
+    <text x="1481" y="878" text-anchor="middle" font-size="13" font-weight="400" fill="#334f61">主网历史行情 · 测试交易标记 shadow</text>
     <text x="1481" y="900" text-anchor="middle" font-size="13" font-weight="400" fill="#334f61">WAL 分库只读直查 + 不可变策略库</text>
     <text x="1481" y="922" text-anchor="middle" font-size="12.5" font-weight="400" fill="#506878">历史回补、预热与同码条件单回测</text>
 
@@ -222,7 +222,7 @@
     <!-- Operating Principles Card (Bottom Left) -->
     <rect x="44" y="1032" width="340" height="112" rx="10" fill="#f7f7f2" stroke="#c8c8be" stroke-width="1.3" stroke-dasharray="5 4"/>
     <text x="62" y="1059" text-anchor="start" font-size="15.2" font-weight="700" fill="#334f61">单机运行与安全底线</text>
-    <text x="62" y="1082" text-anchor="start" font-size="12" font-weight="400" fill="#506878">· systemd 托管 5 进程，密钥仅驻 core/watchdog</text>
+    <text x="62" y="1082" text-anchor="start" font-size="12" font-weight="400" fill="#506878">· systemd 托管 5 进程，交易网关负责签名</text>
     <text x="62" y="1103" text-anchor="start" font-size="12" font-weight="400" fill="#506878">· 实盘/手动交易全过风控与审批，统一 Hedge</text>
     <text x="62" y="1124" text-anchor="start" font-size="12" font-weight="400" fill="#506878">· 托管单文件预检；CLI + 11 MCP + WAL 只读</text>
 
