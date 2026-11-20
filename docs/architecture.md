@@ -68,7 +68,7 @@
 | **`live`** | Tool Call → `admin`（绑定唯一 `account_id`） | 允许 | 拒绝 | 实盘路由（校验 `account_id → activeEpoch` + 防呆风控） | 绑定 `account_id`（校验 `activeEpoch`） | 允许（经护栏） |
 | **`shadow`** | Tool Call → `admin` | 允许 | 拒绝 | Shadow 路由（同风控 + 交易所 Demo / Testnet API） | 独立命名空间 `shadow:<run_id>` | 允许（经护栏） |
 | **`collector`** | Tool Call → `admin` | 允许 | 允许（限已声明 `dataset`） | 拒绝（403） | 独立命名空间 `collector:<name>` | 允许（经护栏） |
-| **`readonly`** | Tool Call → `admin`（研究 / 回测） | 允许（或直连 `storage`） | 拒绝（403） | 拒绝（403） | 只读 | 拒绝（403） |
+| **`readonly`** | Tool Call → `admin`（研究 / 监听 / 回测） | 允许（或直连 `storage`） | 拒绝（403） | 拒绝（403） | 独立命名空间 `readonly:<name>` | 允许（经护栏） |
 
 #### `@quant/tools` 核心原语（统一 Hedge Mode）
 
@@ -83,8 +83,8 @@ trade.cancelAll()
 trade.positions()                     // { long, short } 双腿持仓
 trade.openOrders()
 
-// 异步触发受限 Agent 诊断任务（投递 agent.request 事件，不阻塞脚本循环）
-agents.startTask({ dedupKey, prompt, context }) // 返回 { taskId }
+// 异步触发 Agent 任务（投递 agent.request 事件，不阻塞脚本循环；默认在远端 App 侧边栏可见）
+agents.startTask({ dedupKey, prompt, title?, backend?, visibility?, context? }) // 返回 { taskId }
 agents.getTask(taskId)
 ```
 
@@ -155,19 +155,16 @@ agents.getTask(taskId)
   GET  /v1/tasks/:id              // 查询任务状态、耗时与输出摘要
   POST /v1/tasks/:id/cancel       // 取消运行中的任务
   ```
-- **底层 Agent Harness 适配**：通过薄 Adapter 复用现有 Agent Harness（如 Codex App Server / `codex exec --resume`，可扩展至 Claude Code / OpenCode），按会话 Profile 动态裁剪挂载的 MCP Tools。
+- **底层 Agent Harness 适配与侧边栏可见性**：通过薄 Adapter 复用现有 Agent Harness（如 Codex App Server 与 Antigravity `agy` / `agy acp`），支持按任务控制会话在远端 App 侧边栏的可见性（`visible` / `hidden` / `ephemeral`；`im_user`、`cron_review` 与 `script_triggered` 均默认 `visible`，便于直接从侧边栏打开续聊）。
 - **手机 IM 双向对话（独立对话频道）**：
   - 与 `quant-notifier` 的告警审批 Bot 隔离运行；
   - 维护独立 `agent.db` 持久化 `im_thread_id ↔ session_id` 映射：新开话题发起新会话，原话题回复自动 `resume` 续聊；
-  - 定时复盘或脚本发起的任务完成后自动在 IM 建话题输出报告，交易员回复该话题即可无缝接管该 `session_id` 继续迭代。
+  - 定时复盘或脚本发起的任务完成后自动在 IM 建话题输出报告，交易员可从 App 远端项目侧边栏或直接回复 IM 话题无缝接管该 `session_id` 继续迭代。
 - **定时全局复盘（Cron Scheduler）**：内置定时调度（如每日 UTC 00:05、每周复盘），拉起 `cron_review` 任务汇总各子账户绩效、成交、Checkpoint 演进、采集健康与告警，结合当下 BTC 市场状态给在跑策略追加归因备注，并按 `regime` 标签从策略库检索可唤醒的 `shelved` 历史策略推送至 IM。
-- **脚本触发任务与四道护栏**：订阅事件总线 `agent.request` 异步消费（零阻塞 `quant-core` 与脚本），强制施加：
-  1. **指纹去重与冷却**：按 `dedupKey` 在冷却窗口内合并丢弃重复请求；
+- **脚本触发任务与四道护栏**：订阅事件总线 `agent.request` 异步消费（零阻塞 `quant-core` 与脚本），施加：
+  1. **指纹去重与冷却**：按 `(source_scope, dedupKey)` 在冷却窗口内合并重复请求（保留原 `taskId` 别名可查）；
   2. **并发、写锁与预算上限**：限制全局并发任务数、代码仓库写锁同时仅允许 1 个写会话、强制每日调用次数与费用上限；
-  3. **按触发源分 Profile 裁剪工具权限**：
-     - `im_user`（交易员对话）：开放代码编辑 + 全套 Harness MCP Tools；
-     - `cron_review`（定时全局复盘）：只读观测 + 绩效/日志 + 策略标签归因 + 发报告；
-     - `script_triggered`（脚本触发）：只读观测 + 日志诊断 + 限 `maxTurns` 与超时，推结论到 IM 由人决定是否接管；
+  3. **Profile 提示词与审计约定**：已接入的可信 Agent 共享完整运维工具集，通过 Profile 提示词约定职责及何时先询问交易员（`im_user`、`cron_review`、`script_triggered`），所有控制面变更在服务端记录真实执行来源与审计日志；
   4. **反递归护栏（`maxDepth = 1`）**：脚本触发的 Agent 任务禁止递归触发新的脚本任务。
 
 ### 4.4 `quant-watchdog`（独立外部看门狗）
@@ -249,13 +246,14 @@ strategies/
 | :--- | :--- | :--- |
 | `runs_list(mode?, status?)` | 全自主 | 查看运行中与历史脚本列表（PID、模式、`strategyId`、运行时长、重启次数、心跳） |
 | `runs_logs(runId, tail?, since?, grep?)` | 全自主 | 查询指定脚本的滚动日志 |
-| `runs_start_research(path, params?)` | 全自主 | 启动一次性 `readonly` 研究分析脚本并采集输出 |
+| `runs_start_research(path, persistent?, params?)` | 全自主 | 启动 `readonly` 研究分析脚本或常驻并行行情监听脚本（`persistent: true` 时重启自动恢复） |
 | `runs_start_collector(path, dataset, ttlSec)` | 全自主 | 启动或更新外部数据采集脚本 |
 | `runs_start_shadow(strategyId, params?)` | 全自主 | 按不可变 `strategyId` 启动 Shadow 策略（直连交易所 Demo / Testnet 联调或并行观察） |
-| `runs_stop(runId)` | 全自主（`live` 可配） | 优雅停止脚本并回收终态 Checkpoint |
-| `runs_propose_live(strategyId, accountId, handoverOrders, resetState?, reason, evidenceRunId?)` | 按账户配置 | 按不可变 `strategyId` 发起实盘上线或 `replace` 切换（关联回测/Shadow 成绩单与 diff）；目标账户 `requireApproval: false` 时直接生效，`true` 时返回 `proposalId` 待交易员审批 |
+| `runs_stop(runId, cancelOpenOrders?)` | 按账户配置 | 优雅停止脚本并回收终态 Checkpoint（`live` 账户停机后若仍有持仓必发高优告警） |
+| `runs_propose_live(strategyId, accountId, handoverOrders, resetState?, reason, evidenceRunId?)` | 按账户配置 | 按不可变 `strategyId` 发起实盘上线或 `replace` 切换（关联回测/Shadow 成绩单与 diff）；目标账户 `requireApproval: false` 时直接生效，`true` 时返回 `proposalId` 待确认 |
 | `proposals_status(proposalId)` | 全自主 | 查询实盘变更提案的审批状态 |
-| `agents_start_task(prompt, profile?, dedupKey?)` | 受护栏约束 | 经 `agent.sock` 发起异步 Agent 任务 |
+| `proposals_approve / proposals_reject` | 可信运维（留审计） | 确认或驳回待处理提案（提示词约定需交易员确认时先询问，服务端记录实际执行来源） |
+| `agents_start_task(prompt, profile?, dedupKey?, visibility?)` | 受护栏约束 | 经 `agent.sock` 发起异步 Agent 任务 |
 | `agents_get_task(taskId)` | 全自主 | 查询异步 Agent 任务状态与输出 |
 
 ### 6.5 应急止血与运维沟通
@@ -263,15 +261,14 @@ strategies/
 | Tool | 底层去向 | 用途 |
 | :--- | :--- | :--- |
 | `system_health()` | `quant-core` / `watchdog` | 获取 5 个常驻进程健康指标（Event Loop 延迟、WS 心跳、存储滞后、磁盘空间） |
-| `risk_kill_switch(scope, accountId?, cancelOpenOrders?, reason)` | `quant-core` | 发现异常时单向收紧（禁止开仓/可选撤单）并触发强告警 |
+| `risk_kill_switch` / `risk_unkill` | `quant-core` | 触发或解除全局/单账户 Kill Switch（全部写入 `operation_audit` 留痕） |
+| `system_reload()` | `quant-core` | 热重载账户风控与审批配置并记录配置差异 |
 | `notify_send(level, title, body)` | `quant-notifier` | 向交易员发送诊断报告、复盘摘要或人工介入请求（受限流保护） |
 
-### 6.6 权限红线（不向 Agent 暴露）
+### 6.6 硬边界（不向 Agent 工具暴露）
 
-- 盘中直接下单/撤单/平仓接口（实盘交易仅由确定性脚本执行）；
-- `proposals_approve`（审批需人工确认的实盘上线/切换）；
-- 解除 Kill Switch 与调宽风控上限（仅允许单向收紧）；
-- 修改或删除已封存的不可变策略文件；
+- 盘中直接下单/撤单/平仓接口（实盘交易仅由持租约的确定性脚本通过 `runtime.sock` 执行）；
+- 原地修改或删除已封存的不可变策略文件（须经 `strategies_fork` 衍生新版本）；
 - 交易所 API Key 读取、资金划转与提币。
 
 ---

@@ -88,12 +88,12 @@
     <text x="726.5" y="189" text-anchor="middle" font-size="12" font-weight="700" fill="#2d5a84">shadow · 交易所测试API</text>
     <text x="726.5" y="211" text-anchor="middle" font-size="12" font-weight="400" fill="#506878">按不可变 strategyId 联调</text>
 
-    <!-- Script Card 3: Research / Backtest -->
+    <!-- Script Card 3: Research / Watcher / Backtest -->
     <rect x="842" y="139" width="207" height="82" rx="8" fill="#ffffff" stroke="#c0cbd3" stroke-width="1.4"/>
-    <text x="945.5" y="165" text-anchor="middle" font-size="18" font-weight="700" fill="#183348">研究 / 回测脚本</text>
+    <text x="945.5" y="165" text-anchor="middle" font-size="18" font-weight="700" fill="#183348">监听 / 研究 / 回测</text>
     <rect x="872" y="174" width="147" height="21" rx="10" fill="#edf1f4"/>
     <text x="945.5" y="189" text-anchor="middle" font-size="12.2" font-weight="700" fill="#4b6170">readonly · 无交易权</text>
-    <text x="945.5" y="211" text-anchor="middle" font-size="12" font-weight="400" fill="#506878">草稿回测与离线因子分析</text>
+    <text x="945.5" y="211" text-anchor="middle" font-size="12" font-weight="400" fill="#506878">并行行情监听 · 回测与分析</text>
 
     <!-- Script Card 4: Collector -->
     <rect x="1061" y="139" width="207" height="82" rx="8" fill="#ffffff" stroke="#d5be96" stroke-width="1.4"/>
@@ -241,8 +241,8 @@
     <!-- Underlying Agent Harness -->
     <rect x="1132" y="1032" width="198" height="112" rx="10" fill="#ffffff" stroke="#b7c5c9" stroke-width="1.4"/>
     <text x="1231" y="1066" text-anchor="middle" font-size="18.5" font-weight="700" fill="#183348">Agent Harness</text>
-    <text x="1231" y="1095" text-anchor="middle" font-size="13.8" font-weight="400" fill="#334f61">Codex / Claude Code</text>
-    <text x="1231" y="1120" text-anchor="middle" font-size="12.8" font-weight="400" fill="#506878">按 Profile 挂载 MCP Tools</text>
+    <text x="1231" y="1095" text-anchor="middle" font-size="13.8" font-weight="400" fill="#334f61">Codex / Antigravity</text>
+    <text x="1231" y="1120" text-anchor="middle" font-size="12.5" font-weight="400" fill="#506878">远端侧边栏可见性 · MCP Tools</text>
 
     <!-- Split SQLite & Immutable Strategy Registry -->
     <rect x="1344" y="1032" width="274" height="112" rx="10" fill="#ffffff" stroke="#b7c5c9" stroke-width="1.4"/>
