@@ -226,7 +226,7 @@ export class Supervisor {
     this.sessions.set(token, session);
     let child: Child;
     try {
-      child = Bun.spawn([process.execPath, "run", row.artifact_path], {
+      child = Bun.spawn([process.execPath, "--no-env-file", "run", row.artifact_path], {
         cwd: this.config.dataDir, stdin: "ignore", stdout: "pipe", stderr: "pipe", env: {
           QUANT_SOCKET: socketPath(this.config.dataDir, "runtime"), QUANT_STORAGE_SOCKET: socketPath(this.config.dataDir, "storage"),
           QUANT_TOKEN: token, QUANT_MODE: row.mode, QUANT_RUN_ID: row.run_id, QUANT_CAPABILITIES: row.capabilities_json,

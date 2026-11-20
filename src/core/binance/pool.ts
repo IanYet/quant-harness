@@ -28,6 +28,9 @@ export class AccountPool {
       if (ids.length !== Object.keys(accounts).length || ids.some(id => !Object.hasOwn(accounts, id))) {
         bad("Adding or removing account credentials requires a service restart");
       }
+      if (ids.some(id => this.accounts.get(accountKey(mode, id))!.config.credentialFile !== accounts[id].credentialFile)) {
+        bad("Changing account credential files requires a service restart");
+      }
     }
   }
 

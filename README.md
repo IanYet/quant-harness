@@ -71,21 +71,23 @@
 
 ```bash
 bun install --frozen-lockfile
-export QUANT_CONFIG_PATH="$PWD/config/harness.json"
-cp config/harness.example.json "$QUANT_CONFIG_PATH"
-export QUANT_DATA_DIR="$PWD/.quant"
-mkdir -m 700 -p "$QUANT_DATA_DIR/secrets"
+test -e .env || install -m 0600 .env_template .env
+test -e config/harness.json || cp config/harness.example.json config/harness.json
 ```
 
 各服务的入口为 `bun run quant-core`、`bun run quant-storage`、`bun run quant-notifier`、`bun run quant-agent` 和 `bun run quant-watchdog`。服务可独立启动。部署到常驻服务器时，使用 [systemd unit](./deploy/systemd/) 和 [HTTPS 反代模板](./deploy/nginx/quant-webhooks.conf.example)。unit 模板使用 `ubuntu`、`/home/ubuntu/projects/quant-harness`、`/etc/quant-harness/harness.json` 和 `/var/lib/quant-harness`。
 
-按 [配置规格](./docs/design.md#23-配置结构与热重载边界) 设置每账户的标的和风控。交易凭据和 IM 凭据分别放在 `$QUANT_DATA_DIR/secrets/exchange.json` 与 `im.json`，文件权限为 `0600`。飞书使用新版 `card.action.trigger`、Encrypt Key 和 Verification Token。Telegram Webhook 使用 `secret_token`。Antigravity 的可见会话默认使用 App 数据目录。共享 App 目录由 ACP 打开，使用 CLI 会话目录时可通过 `project` 指定 CLI 项目。Codex 和 Antigravity 需要预先登录。同一系统用户下的 Agent 及脚本遵循仓库的可信运行约定。
+Bun 从仓库根目录自动加载本机 `.env`。`QUANT_SECRETS_DIR` 默认指向 `~/.screets`，可在 `.env` 中改为本机的实际凭据目录。Git 跟踪 `.env_template`，本机 `.env` 被忽略。
+
+按配置规格设置账户的标的和风控。交易凭据和 IM 凭据分别从凭据目录的 `exchange.json` 和 `im.json` 读取，文件权限设为 `0600`。已有单独账户文件时，可在对应账户设置 `credentialFile`，例如在 `shadow.accounts.<accountId>` 指定 `binance-demo.json`。IM 渠道也可用 `credentialFile` 指定独立文件。飞书使用新版 `card.action.trigger`、Encrypt Key 和 Verification Token。Telegram Webhook 使用 `secret_token`。[配置规格](./docs/design.md#23-配置结构与热重载边界)
+
+Antigravity 的可见会话默认使用 App 数据目录。共享 App 目录由 ACP 打开，使用 CLI 会话目录时可通过 `project` 指定 CLI 项目。Codex 和 Antigravity 需要预先登录。同一系统用户下的 Agent 及脚本遵循仓库的可信运行约定。
 
 ```bash
 bun run quant health --json
 bun run quant market funding --symbol BTCUSDT --start 2026-11-19T00:00:00+08:00 --backfill
 bun run scripts/research/funding-summary.ts BTCUSDT 7
-cp scripts/workers/account-watch.ts "$QUANT_DATA_DIR/scripts/workers/"
+cp scripts/workers/account-watch.ts .quant/scripts/workers/
 bun run quant run start worker account-watch.ts --persistent --state-name account-watch --account-read '*'
 ```
 

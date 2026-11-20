@@ -52,8 +52,9 @@ const health = () => ({
 });
 const reload = async () => {
   const next = config();
-  if (next.dataDir !== settings.dataDir || next.defaultSymbol !== settings.defaultSymbol || canonical(next.binance) !== canonical(settings.binance)) {
-    bad("Data directory, default symbol and Binance endpoints require a service restart");
+  if (next.dataDir !== settings.dataDir || next.secretsDir !== settings.secretsDir || next.defaultSymbol !== settings.defaultSymbol ||
+      canonical(next.binance) !== canonical(settings.binance)) {
+    bad("Data directory, credential directory, default symbol and Binance endpoints require a service restart");
   }
   pool.validateReload(next);
   market.configure(next);

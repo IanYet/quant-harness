@@ -143,14 +143,15 @@ quant-harness/
 ├── logs/
 │   └── <role>/<name>/<run_id>.log
 ├── agent-hidden/                 # Antigravity hidden/ephemeral 隔离 app-data-dir
-└── secrets/                      # 0700，0600 配置文件
-    ├── exchange.json             # 实盘与 Demo 签名凭据，供 core 及启用应急撤单的 watchdog 使用
-    └── im.json                   # 通知审批 Bot 与 watchdog 兜底凭据（无对话 Bot）
+└── secrets/                      # 0700
+    └── control.key               # 0600，本运行目录自动生成的本机控制面密钥
 ```
 
 ### 2.3 配置结构与热重载边界
 
 主配置 `config/harness.json`（由 `QUANT_CONFIG_PATH` 指定）：
+
+本地从 `.env_template` 创建仓库根目录 `.env`，由 Bun 自动加载。`QUANT_CONFIG_PATH` 指向主配置，`QUANT_DATA_DIR` 指向运行目录，`QUANT_SECRETS_DIR` 指向站外服务的凭据目录，默认 `~/.screets`。Git 跟踪 `.env_template`，本机 `.env` 被忽略。
 
 ```jsonc
 {
@@ -266,7 +267,7 @@ quant-harness/
 ```
 
 - **热重载（`reload`）范围**：支持热重载全局 `symbols`（动态增减基础常驻流订阅，并同步初始化新标的 K 线聚合器）、各子账户的 `allowedSymbols`（新增标的即刻触发该标的的保证金/杠杆校验）、`requireApproval`、`requireApprovalOnStop`、`requireApprovalOnManualTrade`、`risk`、`labels` 与 `shadow.risk`；`marginType` / `initialLeverage` 仅在账户/标的初始化时校验与设置；新增或移除交易所 API 凭证需重启对应连接。
-- **凭据文件**。`secrets/exchange.json` 结构为 `{ accounts: { [accountId]: { apiKey, apiSecret } }, shadow: { [shadowAccountId]: { apiKey, apiSecret } } }`，权限为 `0600`。同一系统用户下的进程共享文件权限，Agent 和脚本按可信约定使用网关。`quant-core` 与启用应急撤单的 `quant-watchdog` 按需读取交易凭据。通知凭据放在 `secrets/im.json`，托管脚本通过当次 `QUANT_TOKEN` 调用服务。
+- **凭据文件**。`$QUANT_SECRETS_DIR/exchange.json` 结构为 `{ accounts: { [accountId]: { apiKey, apiSecret } }, shadow: { [shadowAccountId]: { apiKey, apiSecret } } }`。各账户也可通过 `credentialFile` 指定目录中的 JSON 文件名，文件直接包含 `{ apiKey, apiSecret }`。通知凭据放在 `$QUANT_SECRETS_DIR/im.json`，飞书和 Telegram 可各自通过 `credentialFile` 指定独立 JSON。文件权限设为 `0600`。`quant-core` 与启用应急撤单的 `quant-watchdog` 按需读取交易凭据。托管脚本通过当次 `QUANT_TOKEN` 调用服务。凭据目录或账户凭据文件的变更需要重启服务。
 - **Webhook 路由映射（Nginx/Caddy HTTPS 反代示例，仅通知与审批）**：
   - `https://<domain>/webhooks/telegram/notifier` → `http://127.0.0.1:18101/webhooks/telegram`
   - `https://<domain>/webhooks/feishu/notifier` → `http://127.0.0.1:18101/webhooks/feishu`
@@ -1100,8 +1101,8 @@ export interface AgentHarnessAdapter {
 ### 6.4 `quant-watchdog`（独立外部看门狗）
 
 - **10 秒周期探测**：探测 `quant-core` Event Loop 延迟、按 `config.symbols` 逐标的核查 `bookTicker`/`kline_1m`/`markPrice` 新鲜度、私有 WS 心跳与账户对账状态、活跃托管脚本存活与数据集 TTL；探测 `quant-storage` 两库水位滞后与磁盘余量；探测 `quant-notifier` 与 `quant-agent` 存活。
-- **直连兜底告警**：独立读取 `secrets/im.json` 直连 Telegram / 飞书，5 分钟防刷屏抑制与恢复通知。
-- **极端失联应急撤单（默认关闭）**：仅当 `emergencyCancel.enabled === true` 且 `quant-core` 连续失联超阈值时，读取 `secrets/exchange.json` 为实盘子账户按 `allowedSymbols` 撤销普通挂单（`DELETE /fapi/v1/allOpenOrders`）；**仅当 `includeConditional === true` 时才追加调用 `DELETE /fapi/v1/algoOpenOrders`**，默认保留交易所侧保护性止损条件单，且绝不擅自市价平仓。
+- **直连兜底告警**：从 `QUANT_SECRETS_DIR` 按渠道配置独立读取凭据并直连 Telegram / 飞书，5 分钟防刷屏抑制与恢复通知。
+- **极端失联应急撤单（默认关闭）**：仅当 `emergencyCancel.enabled === true` 且 `quant-core` 连续失联超阈值时，从 `QUANT_SECRETS_DIR` 按账户配置读取凭据，为实盘子账户按 `allowedSymbols` 撤销普通挂单（`DELETE /fapi/v1/allOpenOrders`）；**仅当 `includeConditional === true` 时才追加调用 `DELETE /fapi/v1/algoOpenOrders`**，默认保留交易所侧保护性止损条件单，且绝不擅自市价平仓。
 - **本地 `watchdog.sock`**：暴露 `GET /v1/health` 供 `quant health` 聚合读取。
 
 ---

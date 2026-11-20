@@ -2,6 +2,7 @@ import { QuantError, UdsTransport } from "./transport-uds";
 import type { Params } from "./transport-uds";
 import { LocalTransport } from "./transport-local";
 import { BacktestTransport } from "./transport-backtest";
+import { resolveLocalPath } from "./paths";
 import type {
   AccountFullState, AccountSnapshot, AccountTopic, AccountWatchEvent, AggTrade, AgentTaskStatus, AlgoOrderEvent,
   AssetIndexInfo, BasisPoint, CheckpointEnvelope, CompositeIndexInfo, DataSample, DataSampleEvent, ExchangeSymbolInfo,
@@ -17,7 +18,7 @@ export { QuantError };
 type Mode = "live" | "shadow" | "worker" | "backtest" | "local";
 const token = process.env.QUANT_TOKEN;
 const mode = (token ? process.env.QUANT_MODE : "local") as Mode;
-const dir = process.env.QUANT_DATA_DIR ?? "/var/lib/quant-harness";
+const dir = resolveLocalPath(process.env.QUANT_DATA_DIR ?? "/var/lib/quant-harness");
 const sockets = {
   runtime: process.env.QUANT_SOCKET ?? dir + "/run/runtime.sock",
   storage: process.env.QUANT_STORAGE_SOCKET ?? dir + "/run/storage.sock",

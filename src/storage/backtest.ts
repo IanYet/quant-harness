@@ -333,7 +333,7 @@ export class Backtests {
     const socket = join(temp, "replay.sock");
     const server = await serveUnix(socket, handler((req, url) => replay.route(req, url)));
     try {
-      const child = Bun.spawn([process.execPath, "run", artifact.artifactPath], {
+      const child = Bun.spawn([process.execPath, "--no-env-file", "run", artifact.artifactPath], {
         cwd: this.config.dataDir, stdin: "ignore", stdout: "pipe", stderr: "pipe",
         env: { QUANT_SOCKET: socket, QUANT_BACKTEST_SOCKET: socket, QUANT_TOKEN: token, QUANT_MODE: "backtest",
           QUANT_BACKTEST_START: String(start - 1), QUANT_RUN_ID: runId, QUANT_ACCOUNT: "backtest", QUANT_EPOCH: "0" },

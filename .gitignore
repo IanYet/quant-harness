@@ -1,8 +1,10 @@
 node_modules/
 config/harness.json
 secrets/
-.env
-.env.*
+.secrets/
+.screets/
+.env*
+!/.env_template
 *.tsbuildinfo
 
 .quant/

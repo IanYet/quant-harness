@@ -1,6 +1,7 @@
 import { readFileSync, statSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { join, resolve, isAbsolute } from "node:path";
+import { join, isAbsolute } from "node:path";
+import { resolveLocalPath } from "../../packages/tools/paths";
 import { bad, flag, ID, integer, num, oneOf, record, str, stringList, SYMBOL } from "./http";
 
 export type AccountMode = "live" | "shadow";
@@ -20,6 +21,7 @@ export interface AccountConfig {
   initialLeverage: number;
   risk: RiskLimits;
   labels: string[];
+  credentialFile?: string;
 }
 export interface BinanceConfig {
   mainnetRest: string;
@@ -31,9 +33,15 @@ export interface BinanceConfig {
 }
 export type Service = "admin" | "runtime" | "storage" | "agent" | "notifier" | "watchdog";
 
-export const configPath = () => resolve(process.env.QUANT_CONFIG_PATH ?? "config/harness.json");
-export const dataPath = () => process.env.QUANT_DATA_DIR ?? config().dataDir;
+const credentialFilename = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\.json$/;
+export const configPath = () => resolveLocalPath(process.env.QUANT_CONFIG_PATH ?? "config/harness.json");
+export const dataPath = () => dataDirOverride() ?? config().dataDir;
 export const socketPath = (dir: string, name: Service) => join(dir, "run", name + ".sock");
+
+function dataDirOverride() {
+  const dir = process.env.QUANT_DATA_DIR;
+  return dir === undefined ? undefined : resolveLocalPath(str(dir, "QUANT_DATA_DIR"));
+}
 
 function risk(value: unknown): RiskLimits {
   const obj = record(value ?? {});
@@ -60,6 +68,7 @@ function accounts(value: unknown, shadowRisk?: RiskLimits): Record<string, Accou
       initialLeverage: integer(v.initialLeverage ?? 1, "initialLeverage", 1, 125),
       risk: limits,
       labels: stringList(v.labels ?? [], "labels"),
+      credentialFile: v.credentialFile === undefined ? undefined : str(v.credentialFile, "credentialFile", credentialFilename),
     }];
   }));
 }
@@ -74,8 +83,9 @@ export function config() {
   const raw = record(JSON.parse(readFileSync(configPath(), "utf8")));
   const b = record(raw.binance ?? {});
   const shadow = record(raw.shadow ?? {});
-  const dataDir = str(process.env.QUANT_DATA_DIR ?? raw.dataDir ?? "/var/lib/quant-harness", "dataDir");
+  const dataDir = dataDirOverride() ?? str(raw.dataDir ?? "/var/lib/quant-harness", "dataDir");
   if (!isAbsolute(dataDir)) bad("dataDir must be absolute");
+  const secretsDir = resolveLocalPath(str(process.env.QUANT_SECRETS_DIR ?? "~/.screets", "QUANT_SECRETS_DIR"));
   const defaultSymbol = str(raw.defaultSymbol ?? "BTCUSDT", "defaultSymbol", SYMBOL);
   const symbols = stringList(raw.symbols ?? [defaultSymbol], "symbols", SYMBOL);
   if (!symbols.includes(defaultSymbol)) bad("symbols must contain defaultSymbol");
@@ -96,7 +106,7 @@ export function config() {
   const liveAccounts = accounts(raw.accounts);
   const shadowAccounts = accounts(shadow.accounts, risk(shadow.risk));
   if (Object.keys(liveAccounts).some(id => Object.hasOwn(shadowAccounts, id))) bad("Live and shadow account IDs must be distinct");
-  return { dataDir, defaultSymbol, symbols, binance, liveAccounts, shadowAccounts,
+  return { dataDir, secretsDir, defaultSymbol, symbols, binance, liveAccounts, shadowAccounts,
     im: record(raw.im ?? {}), agent: record(raw.agent ?? {}), watchdog: record(raw.watchdog ?? {}) };
 }
 export type HarnessConfig = ReturnType<typeof config>;
@@ -109,12 +119,15 @@ export async function initLayout(dir: string) {
   ]);
 }
 
-export function readSecret(dir: string, name: "exchange" | "im"): Record<string, unknown> {
-  const path = join(dir, "secrets", name + ".json");
+export function readSecret(dir: string, file: string): Record<string, unknown> {
+  const path = join(dir, str(file, "credential filename", credentialFilename));
   try {
     const info = statSync(path);
     if (!info.isFile() || (info.mode & 0o077) !== 0) throw new Error("Restrict permissions on " + path + " to 0600");
-    return record(JSON.parse(readFileSync(path, "utf8")));
+    const text = readFileSync(path, "utf8");
+    let value: unknown;
+    try { value = JSON.parse(text); } catch { throw new Error("Invalid credential JSON at " + path); }
+    return record(value, "Expected a credential object in " + path);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
     throw error;
@@ -122,8 +135,12 @@ export function readSecret(dir: string, name: "exchange" | "im"): Record<string,
 }
 
 export function credentials(config: HarnessConfig, mode: AccountMode, id: string) {
-  const secrets = readSecret(config.dataDir, "exchange");
-  const entries = record(secrets[mode === "live" ? "accounts" : "shadow"] ?? {});
-  const v = record(Object.hasOwn(entries, id) ? entries[id] : undefined, "Missing " + mode + " credentials for " + id);
+  const accounts = mode === "live" ? config.liveAccounts : config.shadowAccounts;
+  const account = Object.hasOwn(accounts, id) ? accounts[id] : bad("Unknown " + mode + " account " + id);
+  const entries = account.credentialFile ? undefined : record(
+    readSecret(config.secretsDir, "exchange.json")[mode === "live" ? "accounts" : "shadow"] ?? {},
+  );
+  const v = account.credentialFile ? readSecret(config.secretsDir, account.credentialFile) :
+    record(entries && Object.hasOwn(entries, id) ? entries[id] : undefined, "Missing " + mode + " credentials for " + id);
   return { apiKey: str(v.apiKey, "apiKey"), apiSecret: str(v.apiSecret, "apiSecret") };
 }

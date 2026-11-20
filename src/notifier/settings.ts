@@ -12,9 +12,12 @@ export function imSettings(config: HarnessConfig) {
   const f = record(im.feishu ?? {});
   const telegramEnabled = flag(t.enabled, "telegram.enabled");
   const feishuEnabled = flag(f.enabled, "feishu.enabled");
-  const secrets = telegramEnabled || feishuEnabled ? readSecret(config.dataDir, "im") : {};
-  const ts = record(secrets.telegram ?? {});
-  const fs = record(secrets.feishu ?? {});
+  const useSharedFile = (telegramEnabled && t.credentialFile === undefined) || (feishuEnabled && f.credentialFile === undefined);
+  const secrets = useSharedFile ? readSecret(config.secretsDir, "im.json") : {};
+  const ts = telegramEnabled && t.credentialFile !== undefined ?
+    readSecret(config.secretsDir, str(t.credentialFile, "telegram.credentialFile")) : record(secrets.telegram ?? {});
+  const fs = feishuEnabled && f.credentialFile !== undefined ?
+    readSecret(config.secretsDir, str(f.credentialFile, "feishu.credentialFile")) : record(secrets.feishu ?? {});
   const telegram: TelegramSettings | undefined = !telegramEnabled ? undefined : {
     chat: str(t.alertChatId, "telegram.alertChatId", /^-?\d+$/),
     users: stringList(t.allowedAdminUserIds ?? [], "telegram.allowedAdminUserIds", /^\d+$/),
