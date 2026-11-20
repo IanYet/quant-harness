@@ -4,7 +4,7 @@
 
 交易员通过手机 IM 与 AI Agent 对话提出需求并审批实盘变更；AI Agent 在离线/异步闭环中负责策略研发、外部数据采集、回测与全局复盘；所有盘中实时交易均由确定性独立 Bun 脚本进程执行。
 
-![量化交易 Harness 架构图 (v2)](./docs/architecture.svg)
+![量化交易 Harness 架构图](./docs/architecture.svg)
 
 ---
 

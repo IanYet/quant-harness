@@ -40,7 +40,7 @@
 
     <!-- Header & Legend -->
     <text x="44" y="51" text-anchor="start" font-size="33" font-weight="700" fill="#183348">量化交易 Harness 架构图</text>
-    <text x="504" y="50" text-anchor="start" font-size="16" font-weight="400" fill="#506878">Bun + TS · BTC/USDT 永续 · 1账户1策略 · Hedge · 不可变策略库</text>
+    <text x="448" y="50" text-anchor="start" font-size="16" font-weight="400" fill="#506878">Bun + TS · BTC/USDT 永续 · 1账户1策略 · Hedge · 不可变策略库</text>
 
     <path d="M1032 43 H1072" stroke="#33597b" stroke-width="2" fill="none" stroke-linecap="round" stroke-dasharray="6 5" marker-end="url(#control)"/>
     <text x="1084" y="49" text-anchor="start" font-size="15.5" font-weight="400" fill="#334f61">进程控制 / 审批</text>

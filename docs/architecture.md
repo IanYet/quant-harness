@@ -1,6 +1,6 @@
-# 量化交易 Harness 架构设计（v2）
+# 量化交易 Harness 架构设计
 
-![量化交易 Harness 架构图 (v2)](./architecture.svg)
+![量化交易 Harness 架构图](./architecture.svg)
 
 ---
 
